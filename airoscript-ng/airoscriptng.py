@@ -7,14 +7,14 @@ from threading import Timer
 import tempfile
 import logging
 import subprocess
-import StringIO
 import netifaces
-import time
 import os
 import re
+import json
 import csv
 from concurrent.futures import ThreadPoolExecutor as Pool
 info = logging.getLogger(__name__).info
+logging.basicConfig(level=logging.DEBUG)
 
 def callback(future):
     if future.exception() is not None:
@@ -26,17 +26,18 @@ def callback(future):
 pluginmanager.load_plugins("plugins.list")
 
 class Airoscript(object):
-    def __init__(self):
+    def __init__(self, wifi_iface):
         # Base state, almost nothing should be done here.
         self.session_list = {}
+        self.wifi_iface = wifi_iface
 
     def create_session(self, name):
         if not name in self.session_list:
-            self.session_list['name'] = Session(time())
+            self.session_list[name] = Session({'name': name, 'wifi': self.wifi_iface})
         else:
             return False
 
-        return self.session_list['name']
+        return self.session_list[name]
 
 
 class Aircrack(object):
@@ -46,7 +47,7 @@ class Aircrack(object):
         aircrack-ng suite processes.
         On callback,
     """
-    def __init__(self, binary_path="/usr/sbin"):
+    def __init__(self, binary_path="/usr/sbin", preferences_file="aircrack_base_parameters.json"):
         """
             Dinamically creates a function for each aircrack-ng binary.
         """
@@ -54,96 +55,105 @@ class Aircrack(object):
         _cmds = ['airodump', 'aircrack', 'airmon']
         self.cmds = dict(list(zip(_cmds, map(lambda x: x + "-ng", _cmds))))
         self.executing = {}
-        for cmdname, cmd in self.cmds.iteritems():
-            if not hasattr(self, cmdname):
-                setattr(self.__class__, cmdname, lambda s, params: self.execute(cmd, params, callback))
 
-        self.attributes = {
-            'airodump-ng': {
-                'ivs': ['--ivs', False],
-                'gps': ['--gpsd', False],
-                'filter_unassociated_clients': ['-a', True],
-                'update' : ['--update', '20'],
-                'ignore_one' : ['--ignore-negative-one', True],
-                'network': ['mon0', True],
-                'dump_prefix' : ['-w', '/tmp']
-            }
-        }
+        with open(preferences_file, 'r') as _preferences_file:
+            self.attributes = json.load(_preferences_file)
 
     def callback(self, command, callback, result):
         """
             Remove the finished process from self.executing.
         """
         self.executing.pop(command)
-        print result
         return callback(result)
 
-    def execute(self, command="airodump-ng", _parameters={}, callback=False):
-        if not callback:
-            callback = lambda x: info(x)
+    def parse_parameters(self, _parameters={}, command="airodump-ng"):
         parameters = []
         if command in self.attributes:
             for name, param in self.attributes[command].iteritems():
                 if param[1] and not name in _parameters:
-                    parameters.append(param[0])
+                    if param[0]:
+                        parameters.append(param[0])
                     if param[1] != True:
                         parameters.append(param[1])
 
             for name, param in _parameters.iteritems():
                 if name in self.attributes[command]:
                     schema = self.attributes[command][name]
-                    if schema[1] != True:
+                    if not schema[1] and schema[0]:
                         parameters.append(schema[0])
                     parameters.append(param)
+        return parameters
 
-            print parameters
+    def execute(self, command="airodump-ng", _parameters={}, callback=False, wait=False, direct=False):
+        if not callback:
+            info("Defaulting to info callback for command {} params {}".format(command, _parameters))
+            callback = lambda x: info(x)
 
         if command in self.executing.keys():
             raise AiroscriptError('Cannot execute %s, it\'s already executing' %command)
-
         self.executing[command] = [ ]
 
+        parameters = self.parse_parameters(_parameters, command)
         pool = Pool(max_workers=1)
 
-        # TODO Where should I put communication with the process? =/
-        FNULL = open(os.devnull, 'w')
+        if direct:
+            return subprocess.check_output([command] + parameters)
+
         f = pool.submit(subprocess.Popen, [command] + parameters,
-                stdout=FNULL, stderr=FNULL, stdin=FNULL)
-        f.add_done_callback(lambda x: self.callback(command, callback, x))
-        pool.shutdown(wait=False)
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        f.add_done_callback(callback) #lambda x: self.callback(command, callback, x))
+        pool.shutdown(wait=wait)
         return f
+
+    def airmon(self, params, callback):
+        info("Calling airmon with callback {}".format(callback))
+        return self.execute(command="airmon-ng", _parameters=params, callback=callback)
 
 class AiroscriptError(Exception):
     pass
 
 class Session(object):
+    """
+        config object:
+            - name
+            - wifi
+    """
     def __init__(self, config={}):
         self.config = config
         self._target = Target()
         self.target_dir = tempfile.mkdtemp()
         self.aircrack = Aircrack()
-        os.environ['MON_PREFIX'] = self.config["name"] # FIXME This may cause concurrency problems
+        os.environ['MON_PREFIX'] = self.config["name"] # FIXME This may cause concurrency problems if we put equal names. Appending time to the name of the session maybe?
         self.should_be_mon_iface = self.config["name"] + "0"
+        self._mon_iface = None
 
         if not self.should_be_mon_iface in netifaces.interfaces():
-            self.monitor_result = self.aircrack.execute('airmon-ng', OrderedDict([('command',
-                "start"), ('wireless', self.config["wifi"])]))
-            self.mon_iface = [re.match('(.*)\(monitor mode enabled on (.*)\)', f).group(2) for f in self.monitor_result.result().communicate()[0].splitlines() if 'monitor mode enabled on' in f]
+            self.monitor_result = False # Still processing here. TODO Find a nicer way to do this. BUT NON BLOCKING. This has to be xmlrpc and FAST.
+            self.aircrack.airmon(OrderedDict([('command',
+                "start"), ('wireless', self.config["wifi"])]), self.set_mon_iface)
         else:
-            self.mon_iface = self.should_be_mon_iface
+            self._mon_iface = self.should_be_mon_iface
 
-        if not self.mon_iface == self.should_be_mon_iface:
-           raise Exception("""Monitor interface is called %s and should be called
-                   %s. Something fishy is happening with your wireless card,
-                   have you put it MANUALLY in monitor mode with this session
-                   name? Are you running multiple airoscript-ng with the same
-                   session names?""" %(self.mon_iface, self.should_be_mon_iface))
+    @property
+    def mon_iface(self):
+        return self._mon_iface
+
+    def set_mon_iface(self, result):
+        mon_result = result.result().communicate()
+        for line in mon_result[0].splitlines():
+            monitor_test = re.match('(.*)\((.*)monitor mode enabled on (.*)\)(.*)', line)
+            if monitor_test:
+                self._mon_iface = monitor_test.group(3)
+                if not self.mon_iface == self.should_be_mon_iface:
+                    info("Monitor interface is called {} and should be called {}".format(
+                        self.mon_iface, self.should_be_mon_iface))
+        return True
 
     @property
     def target(self):
         return self._target
 
-    @target.set
+    @target.setter
     def set_target(self, dict_):
         """
             This way we only have to do something like
@@ -201,6 +211,8 @@ class Session(object):
         )
 
         # We wait default scan time and ask for airodump-ng to re-bump.
+        # With this we can have an airodump-ng continuously scanning on background until we want to get to a fixed channel
+        # TODO Maybe magic with fixed / hoping channels and different cards?
         return Timer(int(self.config['scan_time']), self.on_scan, (result.result().pid))
 
     def crack(self):
@@ -225,6 +237,7 @@ class Target(object):
         self.essid = dict_[' ESSID']
         self.power = dict_[' Power']
         self.encryption = dict_[' Privacy'],
+        # TODO Make magic for associated
 
     @property
     def is_client(self):
@@ -235,5 +248,3 @@ def main():
         level=logging.INFO,
         format=("%(relativeCreated)04d %(process)05d %(threadName)-10s "
                 "%(levelname)-5s %(msg)s"))
-
-
