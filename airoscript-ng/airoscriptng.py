@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-from datetime import time
+import time
 import pluginmanager
 from collections import OrderedDict
 from threading import Timer
@@ -13,58 +13,31 @@ import re
 import json
 import csv
 from concurrent.futures import ThreadPoolExecutor as Pool
-info = logging.getLogger(__name__).info
+debug = logging.getLogger(__name__).debug
 logging.basicConfig(level=logging.DEBUG)
 
 def callback(future):
     if future.exception() is not None:
-        info("Got exception: %s" % future.exception())
+        debug("Got exception: %s" % future.exception())
     else:
-        info("Process returned %d" % future.result())
+        debug("Process returned %d" % future.result())
 
 # TODO: Move this to a proper place
 pluginmanager.load_plugins("plugins.list")
 
-class Airoscript(object):
-    def __init__(self, wifi_iface):
-        # Base state, almost nothing should be done here.
-        self.session_list = {}
-        self.wifi_iface = wifi_iface
+class Executor(object):
+    def __init__(self, command, parameters, attributes, callback, wait, shell, direct):
+        self.attributes = attributes
+        self.command = command
+        self.devnull = open('/dev/null', 'w')
+        self.callback = callback
+        parameters = self.parse_parameters(parameters, command)
 
-    def create_session(self, name):
-        if not name in self.session_list:
-            self.session_list[name] = Session({'name': name, 'wifi': self.wifi_iface})
+        if direct:
+            self.result = subprocess.check_output([command] + parameters)
         else:
-            return False
-
-        return self.session_list[name]
-
-
-class Aircrack(object):
-    """
-        Each session should have one or many aircrack-ng objects.
-        An aircrack-ng object should be able to execute ONE of EACH
-        aircrack-ng suite processes.
-        On callback,
-    """
-    def __init__(self, binary_path="/usr/sbin", preferences_file="aircrack_base_parameters.json"):
-        """
-            Dinamically creates a function for each aircrack-ng binary.
-        """
-        self.binary_path = binary_path
-        _cmds = ['airodump', 'aircrack', 'airmon']
-        self.cmds = dict(list(zip(_cmds, map(lambda x: x + "-ng", _cmds))))
-        self.executing = {}
-
-        with open(preferences_file, 'r') as _preferences_file:
-            self.attributes = json.load(_preferences_file)
-
-    def callback(self, command, callback, result):
-        """
-            Remove the finished process from self.executing.
-        """
-        self.executing.pop(command)
-        return callback(result)
+            self.result = subprocess.Popen([command] + parameters,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=shell)
 
     def parse_parameters(self, _parameters={}, command="airodump-ng"):
         parameters = []
@@ -75,39 +48,94 @@ class Aircrack(object):
                         parameters.append(param[0])
                     if param[1] != True:
                         parameters.append(param[1])
-
             for name, param in _parameters.iteritems():
                 if name in self.attributes[command]:
                     schema = self.attributes[command][name]
-                    if not schema[1] and schema[0]:
+                    if schema[1] and schema[0]:
                         parameters.append(schema[0])
                     parameters.append(param)
+        # TODO FIXME DEFAULTS DONT WORK OK HERE
         return parameters
 
-    def execute(self, command="airodump-ng", _parameters={}, callback=False, wait=False, direct=False):
+
+class Airoscript(object):
+    def __init__(self, wifi_iface):
+        # Base state, almost nothing should be done here.
+        self.session_list = {}
+        self.wifi_iface = wifi_iface
+
+    def create_session(self, name=False, sleep_time=2, scan_time=2):
+        if not name:
+            name = str(time.time()).replace('.', '')
+
+        if not name in self.session_list:
+            self.session_list[name] = Session({
+                'name': name,
+                'wifi': self.wifi_iface,
+                'sleep_time': sleep_time,
+                'scan_time': scan_time
+            })
+        else:
+            raise Exception("Session name already taken")
+
+        return self.session_list[name]
+
+class Aircrack(object):
+    """
+        Each session should have one or many aircrack-ng objects.
+        An aircrack-ng object should be able to execute ONE of EACH
+        aircrack-ng suite processes.
+        TODO: maybe exceptions to this.
+    """
+    def __init__(self, binary_path="/usr/sbin", preferences_file="aircrack_base_parameters.json"):
+        """
+            Dinamically creates a function for each aircrack-ng binary.
+        """
+        self.binary_path = binary_path
+        _cmds = ['airodump', 'aircrack', 'airmon']
+        self.cmds = dict(list(zip(_cmds, map(lambda x: x + "-ng", _cmds))))
+        print self.cmds
+        self.executing = {}
+
+        with open(preferences_file, 'r') as _preferences_file:
+            self.attributes = json.load(_preferences_file)
+
+    def callback(self, result):
+        """
+            Remove the finished process from self.executing.
+        """
+        result = result.result()
+        self.executing.pop(result.command)
+        result.callback(result.result)
+        #self.executing.pop(command)
+        #return callback(result)
+
+    def execute(self, command="airodump-ng", _parameters={}, callback=False, wait=False, direct=False, shell=False):
         if not callback:
-            info("Defaulting to info callback for command {} params {}".format(command, _parameters))
-            callback = lambda x: info(x)
+            debug("Defaulting to debug callback for command {} params {}".format(command, _parameters))
+            callback = lambda x: debug(x)
 
         if command in self.executing.keys():
             raise AiroscriptError('Cannot execute %s, it\'s already executing' %command)
         self.executing[command] = [ ]
 
-        parameters = self.parse_parameters(_parameters, command)
         pool = Pool(max_workers=1)
-
-        if direct:
-            return subprocess.check_output([command] + parameters)
-
-        f = pool.submit(subprocess.Popen, [command] + parameters,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        f.add_done_callback(callback) #lambda x: self.callback(command, callback, x))
+        f = pool.submit(Executor, command, _parameters, self.attributes, callback, wait, direct, shell)
+        f.add_done_callback(self.callback)
         pool.shutdown(wait=wait)
         return f
 
-    def airmon(self, params, callback):
-        info("Calling airmon with callback {}".format(callback))
-        return self.execute(command="airmon-ng", _parameters=params, callback=callback)
+    def airmon(self, params, callback=debug):
+        debug("Calling airmon with callback {}".format(callback))
+        return self.execute(command="airmon-ng", _parameters=params, callback=callback, wait=True, shell=False)
+
+    def airodump(self, params, callback=debug):
+        debug("Calling airodump wit params {} and callback {}".format(params, callback))
+        return self.execute(command="airodump-ng", _parameters=params, callback=callback)
+
+    def aireplay(self, params, callback=debug):
+        debug("Calling aireplay wit params {} and callback {}".format(params, callback))
+        return self.execute(command="aireplay-ng", _parameters=params, callback=callback)
 
 class AiroscriptError(Exception):
     pass
@@ -139,13 +167,13 @@ class Session(object):
         return self._mon_iface
 
     def set_mon_iface(self, result):
-        mon_result = result.result().communicate()
+        mon_result = result.communicate()
         for line in mon_result[0].splitlines():
             monitor_test = re.match('(.*)\((.*)monitor mode enabled on (.*)\)(.*)', line)
             if monitor_test:
                 self._mon_iface = monitor_test.group(3)
                 if not self.mon_iface == self.should_be_mon_iface:
-                    info("Monitor interface is called {} and should be called {}".format(
+                    debug("Monitor interface is called {} and should be called {}".format(
                         self.mon_iface, self.should_be_mon_iface))
         return True
 
@@ -154,13 +182,18 @@ class Session(object):
         return self._target
 
     @target.setter
-    def set_target(self, dict_):
+    def target(self, target):
         """
             This way we only have to do something like
             self.target = current_targets[10] and it'll automatically
             make an object from it.
         """
-        self._target = Target().from_dict(dict_)
+        if not isinstance(target, Target):
+            if isinstance(target, list):
+                target = dict(target)
+            self._target = Target().from_dict(target)
+        else:
+            self._target = target
 
     @property
     def current_targets(self):
@@ -181,7 +214,7 @@ class Session(object):
 
     def rebump(self, pid):
         """
-            Launches sigint to a process.
+            Lki/aunches sigint to a process.
             In airodump-ng this means updating the csv contents
         """
         return os.kill(pid, 2)
@@ -189,31 +222,35 @@ class Session(object):
     def on_scan(self, pid):
         self.rebump(pid)
         time.sleep(1)
+        debug("Ok, now you can read current_targets")
         return pluginmanager.trigger_event(
             "on_after_scan",
             target = self.target,
             session = self,
         )
 
-    def scan(self):
+    def scan(self, options=OrderedDict()):
         pluginmanager.trigger_event(
             "on_before_scan",
             target = self.target,
             session = self,
         )
+        final_options = OrderedDict([
+                ('dump_prefix', self.target_dir + "/" + self.config["name"]),
+                ('wireless', self.mon_iface)
+        ])
+        final_options.update(options.items())
 
-        result = self.aircrack.execute(
-            'airodump-ng',
-            OrderedDict([
-                ('network', self.mon_iface),
-                ('dump_prefix', self.target_dir + "/" + self.config["name"])
-            ])
-        )
+        result = self.aircrack.airodump(final_options, lambda x: debug(x.communicate()[0].splitlines()))
 
         # We wait default scan time and ask for airodump-ng to re-bump.
         # With this we can have an airodump-ng continuously scanning on background until we want to get to a fixed channel
         # TODO Maybe magic with fixed / hoping channels and different cards?
-        return Timer(int(self.config['scan_time']), self.on_scan, (result.result().pid))
+        Timer(int(self.config['scan_time']), self.on_scan, (result.result().result.pid))
+        # I'm not sure this way of ensuring method chaining is really OK. Probably going to change it soon.
+        # But the way it was returning the timer is bad for xmlrpc too, so this should probably just return True.
+        # TODO: That ^.
+        return self
 
     def crack(self):
         return
@@ -237,7 +274,10 @@ class Target(object):
         self.essid = dict_[' ESSID']
         self.power = dict_[' Power']
         self.encryption = dict_[' Privacy'],
-        # TODO Make magic for associated
+        return self
+
+    def __repr__(self):
+        return "Target object with data: {}".format(self.__dict__)
 
     @property
     def is_client(self):
@@ -245,6 +285,6 @@ class Target(object):
 
 def main():
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.debug,
         format=("%(relativeCreated)04d %(process)05d %(threadName)-10s "
                 "%(levelname)-5s %(msg)s"))

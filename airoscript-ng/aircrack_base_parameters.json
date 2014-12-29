@@ -2,10 +2,10 @@
     "airodump-ng": {
         "ivs": ["--ivs", false],
         "gps": ["--gpsd", false],
-        "filter_unassociated_clients": ["-a", true],
+        "filter_unassociated_clients": ["-a", false],
         "update" : ["--update", "20"],
         "ignore_one" : ["--ignore-negative-one", true],
-        "network": ["mon0", true],
+        "wireless": [false, "mon0"],
         "dump_prefix" : ["-w", "/tmp"]
     },
     "airmon-ng": {
