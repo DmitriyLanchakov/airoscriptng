@@ -1,18 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import time
+import json
 import pluginmanager
 from collections import OrderedDict
 from threading import Timer
 import tempfile
 import logging
-import subprocess
 import netifaces
 import os
 import re
-import json
 import csv
-from concurrent.futures import ThreadPoolExecutor as Pool
+from aircrack import AircrackSession
 debug = logging.getLogger(__name__).debug
 logging.basicConfig(level=logging.DEBUG)
 
@@ -25,42 +24,8 @@ def callback(future):
 # TODO: Move this to a proper place
 pluginmanager.load_plugins("plugins.list")
 
-class Executor(object):
-    def __init__(self, command, parameters, attributes, callback, wait, shell, direct):
-        self.attributes = attributes
-        self.command = command
-        self.devnull = open('/dev/null', 'w')
-        self.callback = callback
-        parameters = self.parse_parameters(parameters, command)
-
-        if direct:
-            self.result = subprocess.check_output([command] + parameters)
-        else:
-            self.result = subprocess.Popen([command] + parameters,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=shell)
-
-    def parse_parameters(self, _parameters={}, command="airodump-ng"):
-        parameters = []
-        if command in self.attributes:
-            for name, param in self.attributes[command].iteritems():
-                if param[1] and not name in _parameters:
-                    if param[0]:
-                        parameters.append(param[0])
-                    if param[1] != True:
-                        parameters.append(param[1])
-            for name, param in _parameters.iteritems():
-                if name in self.attributes[command]:
-                    schema = self.attributes[command][name]
-                    if schema[1] and schema[0]:
-                        parameters.append(schema[0])
-                    parameters.append(param)
-        # TODO FIXME DEFAULTS DONT WORK OK HERE
-        return parameters
-
-
 class Airoscript(object):
     def __init__(self, wifi_iface):
-        # Base state, almost nothing should be done here.
         self.session_list = {}
         self.wifi_iface = wifi_iface
 
@@ -80,63 +45,6 @@ class Airoscript(object):
 
         return self.session_list[name]
 
-class Aircrack(object):
-    """
-        Each session should have one or many aircrack-ng objects.
-        An aircrack-ng object should be able to execute ONE of EACH
-        aircrack-ng suite processes.
-        TODO: maybe exceptions to this.
-    """
-    def __init__(self, binary_path="/usr/sbin", preferences_file="aircrack_base_parameters.json"):
-        """
-            Dinamically creates a function for each aircrack-ng binary.
-        """
-        self.binary_path = binary_path
-        _cmds = ['airodump', 'aircrack', 'airmon']
-        self.cmds = dict(list(zip(_cmds, map(lambda x: x + "-ng", _cmds))))
-        print self.cmds
-        self.executing = {}
-
-        with open(preferences_file, 'r') as _preferences_file:
-            self.attributes = json.load(_preferences_file)
-
-    def callback(self, result):
-        """
-            Remove the finished process from self.executing.
-        """
-        result = result.result()
-        self.executing.pop(result.command)
-        result.callback(result.result)
-        #self.executing.pop(command)
-        #return callback(result)
-
-    def execute(self, command="airodump-ng", _parameters={}, callback=False, wait=False, direct=False, shell=False):
-        if not callback:
-            debug("Defaulting to debug callback for command {} params {}".format(command, _parameters))
-            callback = lambda x: debug(x)
-
-        if command in self.executing.keys():
-            raise AiroscriptError('Cannot execute %s, it\'s already executing' %command)
-        self.executing[command] = [ ]
-
-        pool = Pool(max_workers=1)
-        f = pool.submit(Executor, command, _parameters, self.attributes, callback, wait, direct, shell)
-        f.add_done_callback(self.callback)
-        pool.shutdown(wait=wait)
-        return f
-
-    def airmon(self, params, callback=debug):
-        debug("Calling airmon with callback {}".format(callback))
-        return self.execute(command="airmon-ng", _parameters=params, callback=callback, wait=True, shell=False)
-
-    def airodump(self, params, callback=debug):
-        debug("Calling airodump wit params {} and callback {}".format(params, callback))
-        return self.execute(command="airodump-ng", _parameters=params, callback=callback)
-
-    def aireplay(self, params, callback=debug):
-        debug("Calling aireplay wit params {} and callback {}".format(params, callback))
-        return self.execute(command="aireplay-ng", _parameters=params, callback=callback)
-
 class AiroscriptError(Exception):
     pass
 
@@ -149,8 +57,11 @@ class Session(object):
     def __init__(self, config={}):
         self.config = config
         self._target = Target()
+        if not 'parameter_file' in self.config:
+            self.config['parameter_file'] = "aircrack_base_parameters.json"
+        self.parameters = json.load(open(self.config['parameter_file']))
         self.target_dir = tempfile.mkdtemp()
-        self.aircrack = Aircrack()
+        self.aircrack = AircrackSession(self.parameters)
         os.environ['MON_PREFIX'] = self.config["name"] # FIXME This may cause concurrency problems if we put equal names. Appending time to the name of the session maybe?
         self.should_be_mon_iface = self.config["name"] + "0"
         self._mon_iface = None
@@ -208,7 +119,7 @@ class Session(object):
                 aps.append(element[None])
 
         ap_headers = aps.pop(0)
-        client_headers = clients.pop(0)
+        client_headers = [a.lstrip(" ") for a in clients.pop(0)]
 
         return {'clients': [zip(client_headers, client) for client in clients], 'aps': [zip(ap_headers, ap) for ap in aps]}
 

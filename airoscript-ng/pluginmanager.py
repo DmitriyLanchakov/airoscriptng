@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+#- coding:utf-8 -#
 # pluginmanager.py
 from collections import defaultdict
 
@@ -13,7 +15,6 @@ def register(*events):
         return funct
     return registered_plugin
 
-
 def trigger_event(event, *args, **kwargs):
     """ Call this function to trigger an event. It will run any plugins that
         have registered themselves to the event. Any additional arguments or
@@ -21,7 +22,6 @@ def trigger_event(event, *args, **kwargs):
     """
     for plugin in plugins[event]:
         plugin(*args, **kwargs)
-
 
 def load_plugins(config_file):
     """ This reads a config file of a list of plugins to load. It ignores
