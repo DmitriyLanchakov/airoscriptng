@@ -4,9 +4,11 @@ import time
 import json
 import pluginmanager
 from collections import OrderedDict
+from SimpleXMLRPCServer import list_public_methods
 from threading import Timer
 import tempfile
 import logging
+import inspect
 import netifaces
 import os
 import re
@@ -15,26 +17,33 @@ from aircrack import AircrackSession
 debug = logging.getLogger(__name__).debug
 logging.basicConfig(level=logging.DEBUG)
 
+# Disabled for now
+# pluginmanager.load_plugins("plugins.list")
+
 def callback(future):
     if future.exception() is not None:
         debug("Got exception: %s" % future.exception())
     else:
         debug("Process returned %d" % future.result())
 
-# TODO: Move this to a proper place
-pluginmanager.load_plugins("plugins.list")
-
 class Airoscript(object):
+    """
+    """
     def __init__(self, wifi_iface):
         self.session_list = {}
         self.wifi_iface = wifi_iface
 
     def create_session(self, name=False, sleep_time=2, scan_time=2):
+        """
+            Create a AiroscriptSession object and assigns it to session_list
+            If no name provided it will take current time
+            (used to create monitor wireless interface)
+        """
         if not name:
             name = str(time.time()).replace('.', '')
 
         if not name in self.session_list:
-            self.session_list[name] = Session({
+            self.session_list[name] = AiroscriptSession({
                 'name': name,
                 'wifi': self.wifi_iface,
                 'sleep_time': sleep_time,
@@ -45,10 +54,21 @@ class Airoscript(object):
 
         return self.session_list[name]
 
+    def get_session(self, session_name):
+        return self.session_list[session_name]
+
+    def _listMethods(self):
+        return list_public_methods(self)
+
+    def _methodHelp(self, method):
+        f = getattr(self, method)
+        return inspect.getdoc(f)
+
+
 class AiroscriptError(Exception):
     pass
 
-class Session(object):
+class AiroscriptSession(object):
     """
         config object:
             - name
@@ -88,12 +108,23 @@ class Session(object):
                         self.mon_iface, self.should_be_mon_iface))
         return True
 
+    def del_mon_iface(self):
+        return self.aircrack.launch("iw", [self.mon_iface, "del"])
+
     @property
     def target(self):
-        return self._target
+        return self.get_target
+
+    def get_target(self):
+        _ = self._target.__dict__
+        _.pop('properties')
+        return _
 
     @target.setter
     def target(self, target):
+        return self.set_target(target)
+
+    def set_target(self, target):
         """
             This way we only have to do something like
             self.target = current_targets[10] and it'll automatically
@@ -108,6 +139,9 @@ class Session(object):
 
     @property
     def current_targets(self):
+        return self.get_current_targets()
+
+    def get_current_targets(self):
         aps = []
         clients = []
         with open("{}/{}-01.csv".format(self.target_dir, self.config["name"])) as f:
@@ -152,7 +186,7 @@ class Session(object):
         ])
         final_options.update(options.items())
 
-        result = self.aircrack.airodump(final_options, lambda x: debug(x.communicate()[0].splitlines()))
+        result = self.aircrack.airodump(final_options, lambda x: True)
 
         # We wait default scan time and ask for airodump-ng to re-bump.
         # With this we can have an airodump-ng continuously scanning on background until we want to get to a fixed channel
@@ -162,10 +196,6 @@ class Session(object):
         # But the way it was returning the timer is bad for xmlrpc too, so this should probably just return True.
         # TODO: That ^.
         return self
-
-    def crack(self):
-        return
-
 
 class Target(object):
     def __init__(self):
