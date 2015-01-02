@@ -21,3 +21,10 @@ Features
 --------
 
 * TODO
+
+TODO
+-----
+
+- Better parameter parsing & format for aircrack-ng parameters file
+- Implement more complex attacks on the airoscript class
+- Build a few user interfaces.
