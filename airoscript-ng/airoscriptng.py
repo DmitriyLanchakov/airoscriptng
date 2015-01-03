@@ -7,6 +7,8 @@ import pluginmanager
 from collections import OrderedDict
 from SimpleXMLRPCServer import list_public_methods
 from threading import Timer
+import capabilities
+# This whole capabilities stuff is a bad idea. And quite poorly executed. But I'm really tired right now and I want to have reaver stuff working...
 import tempfile
 import logging
 import inspect
@@ -86,6 +88,7 @@ class AiroscriptSession(object):
         os.environ['MON_PREFIX'] = self.config["name"] # FIXME This may cause concurrency problems if we put equal names. Appending time to the name of the session maybe?
         self.should_be_mon_iface = self.config["name"] + "0"
         self._mon_iface = None
+        self.extra_capabilities = dict([(extra, getattr(getattr(capabilities, extra), 'main')(self)) for extra in capabilities.__all__ ])
 
         if not self.should_be_mon_iface in netifaces.interfaces():
             self.monitor_result = False # Still processing here. TODO Find a nicer way to do this. BUT NON BLOCKING. This has to be xmlrpc and FAST.
@@ -235,6 +238,12 @@ class Target(object):
 
         if self.encryption in broken.PRIVACY:
             points += broken.PRIVACY[self.encryption]
+
+        if "reaver" in self.parent.extra_capabilities:
+            scan_file = "{}/{}-01.csv".format(self.parent.target_dir, self.parent.config["name"])
+            reaver_targets = self.parent.extra_capabilities['reaver'].scan(scan_file)
+            if self.bssid in [ a['bssid'] for a in reaver_targets]:
+                points += 500
 
         return {
             'name'  : broken.get_hackability_name(points/10),
