@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import time
 import json
+import broken
 import pluginmanager
 from collections import OrderedDict
 from SimpleXMLRPCServer import list_public_methods
@@ -116,8 +117,9 @@ class AiroscriptSession(object):
         return self.get_target
 
     def get_target(self):
-        _ = self._target.__dict__
+        _ = self._target.__dict__.copy()
         _.pop('properties')
+        _.pop('parent')
         return _
 
     @target.setter
@@ -133,7 +135,7 @@ class AiroscriptSession(object):
         if not isinstance(target, Target):
             if isinstance(target, list):
                 target = dict(target)
-            self._target = Target().from_dict(target)
+            self._target = Target(self).from_dict(target)
         else:
             self._target = target
 
@@ -159,7 +161,7 @@ class AiroscriptSession(object):
 
     def rebump(self, pid):
         """
-            Lki/aunches sigint to a process.
+            Launches sigint to a process.
             In airodump-ng this means updating the csv contents
         """
         return os.kill(pid, 2)
@@ -195,27 +197,49 @@ class AiroscriptSession(object):
         # I'm not sure this way of ensuring method chaining is really OK. Probably going to change it soon.
         # But the way it was returning the timer is bad for xmlrpc too, so this should probably just return True.
         # TODO: That ^.
-        return self
+        clean_return = self.__dict__.copy()
+        clean_return.pop('extra_capabilities')
+        t = clean_return['_target'].__dict__
+        t.pop('parent')
+        clean_return['_target'] = t
+        return clean_return
 
 class Target(object):
-    def __init__(self):
+    def __init__(self, parent=False):
+        self.parent = parent
         self.properties = [
             'bssid',
             'essid',
             'power',
             'encryption',
-            'associated'
+            'associated',
         ]
 
         for element in self.properties:
             setattr(self.__class__, element, '')
 
     def from_dict(self, dict_):
-        self.bssid = dict_['BSSID']
-        self.essid = dict_[' ESSID']
-        self.power = dict_[' Power']
-        self.encryption = dict_[' Privacy'],
+        self.bssid = dict_['BSSID'].strip()
+        self.essid = dict_[' ESSID'].strip()
+        self.power = dict_[' Power'].strip()
+        self.encryption = dict_[' Privacy'].strip(),
+        self.hackability = self.get_hackability()
         return self
+
+    def get_hackability(self):
+        points = 0
+        for essid in broken.ESSIDS:
+            if essid in self.essid:
+                points += 50
+        points += - int(self.power)
+
+        if self.encryption in broken.PRIVACY:
+            points += broken.PRIVACY[self.encryption]
+
+        return {
+            'name'  : broken.get_hackability_name(points/10),
+            'value' : int(points/10)
+        }
 
     def __repr__(self):
         return "Target object with data: {}".format(self.__dict__)
