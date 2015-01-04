@@ -231,23 +231,27 @@ class Target(object):
 
     def get_hackability(self):
         points = 0
+        techs = []
         for essid in broken.ESSIDS:
             if essid in self.essid:
                 points += 50
         points += - int(self.power)
 
         if self.encryption in broken.PRIVACY:
-            points += broken.PRIVACY[self.encryption]
+            points += broken.PRIVACY[self.encryption][0]
+            techs.append(broken.PRIVACY[self.encryption][1])
 
         if "reaver" in self.parent.extra_capabilities:
             scan_file = "{}/{}-01.csv".format(self.parent.target_dir, self.parent.config["name"])
             reaver_targets = self.parent.extra_capabilities['reaver'].scan(scan_file)
             if self.bssid in [ a['bssid'] for a in reaver_targets]:
-                points += 500
+                points += 800
+                techs.append("reaver")
 
         return {
             'name'  : broken.get_hackability_name(points/10),
-            'value' : int(points/10)
+            'value' : int(points/10),
+            'techs' : techs
         }
 
     def __repr__(self):
