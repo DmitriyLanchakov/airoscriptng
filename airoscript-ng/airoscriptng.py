@@ -73,25 +73,29 @@ class AiroscriptError(Exception):
 
 class AiroscriptSession(object):
     """
-        config object:
-            - name
-            - wifi
+        Basic airoscript-ng object.
+        This is the basic airoscript-ng object.
+        An Airoscript object is composed of multiple sessions.
+        TODO: Airoscript object might need to be swapped with this.
+
     """
     def __init__(self, config={}):
         self.config = config
         self._target = Target()
+        self._mon_iface = None
+        self.target_dir = tempfile.mkdtemp()
+
         if not 'parameter_file' in self.config:
             self.config['parameter_file'] = "aircrack_base_parameters.json"
         self.parameters = json.load(open(self.config['parameter_file']))
-        self.target_dir = tempfile.mkdtemp()
+
         self.aircrack = AircrackSession(self.parameters)
-        os.environ['MON_PREFIX'] = self.config["name"] # FIXME This may cause concurrency problems if we put equal names. Appending time to the name of the session maybe?
+        os.environ['MON_PREFIX'] = self.config["name"]
         self.should_be_mon_iface = self.config["name"] + "0"
-        self._mon_iface = None
+
         self.extra_capabilities = dict([(extra, getattr(getattr(capabilities, extra), 'main')(self)) for extra in capabilities.__all__ ])
 
         if not self.should_be_mon_iface in netifaces.interfaces():
-            self.monitor_result = False # Still processing here. TODO Find a nicer way to do this. BUT NON BLOCKING. This has to be xmlrpc and FAST.
             self.aircrack.airmon(OrderedDict([('command',
                 "start"), ('wireless', self.config["wifi"])]), self.set_mon_iface)
         else:
