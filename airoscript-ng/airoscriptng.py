@@ -255,7 +255,9 @@ class Target(object):
         }
 
     def __repr__(self):
-        return "Target object with data: {}".format(self.__dict__)
+        self_dict = self.__dict__.copy()
+        self_dict.pop('parent')
+        return "Target object with data: {}".format(self_dict)
 
     @property
     def is_client(self):
