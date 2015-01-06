@@ -4,9 +4,9 @@ ESSIDS = [
 ] # Those have more probability to be hacked via dicts.
 
 PRIVACY = {
-    'WPA': [50, ['reaver', 'pyrit']],
-    'WPA2': [10, ['reaver', 'pyrit']],
-    'WPA2WPA': [10, ['reaver', 'pyrit']],
+    'WPA': [50, ['get_wpa_handshake', 'pyrit']],
+    'WPA2': [10, ['get_wpa_handshake',  'pyrit']],
+    'WPA2WPA': [10, ['get_wpa_handshake', 'pyrit']],
     'WEP': [900, ['wep_dissasication', 'wep_caffe_latte', 'wep_fragmentation', 'wep_chopchop' ]]
 }
 
