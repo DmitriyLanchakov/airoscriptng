@@ -29,7 +29,7 @@ def callback(future):
     else:
         debug("Process returned %d" % future.result())
 
-class Airoscript(object):
+class AiroscriptSessionManager(object):
     """
     """
     def __init__(self, wifi_iface):
@@ -71,12 +71,63 @@ class Airoscript(object):
 class AiroscriptError(Exception):
     pass
 
-class AiroscriptSession(object):
+class Airoscript(object):
+
+    pids = {}
+
+    def rebump(self, pid):
+        """
+            Launches sigint to a process.
+            In airodump-ng this means updating the csv contents
+        """
+        return os.kill(pid, 2)
+
+    def on_scan_bumped(self, pid):
+        self.rebump(pid)
+        time.sleep(1)
+        # Periodically bump it.
+        Timer(int(self.config['scan_time']), self.on_scan_bumped, (pid))
+        return pluginmanager.trigger_event(
+            "on_after_scan",
+            target = self.target,
+            session = self,
+        )
+
+    def end_scan(self):
+        return os.kill(self.pids['airodump-ng'], 9)
+
+    def scan(self, options=OrderedDict()):
+        pluginmanager.trigger_event(
+            "on_before_scan",
+            target = self.target,
+            session = self,
+        )
+        final_options = OrderedDict([
+                ('dump_prefix', self.target_dir + "/" + self.config["name"]),
+                ('wireless', self.mon_iface)
+        ])
+        final_options.update(options.items())
+
+        result = self.aircrack.airodump(final_options, lambda x: True)
+
+        # We wait default scan time and ask for airodump-ng to re-bump.
+        # With this we can have an airodump-ng continuously scanning on background until we want to get to a fixed channel
+        # TODO Maybe magic with fixed / hoping channels and different cards?
+        pid = result.result().result.pid
+        Timer(int(self.config['scan_time']), self.on_scan_bumped, (pid))
+        self.pids['airodump-ng'] = pid
+
+        clean_self = clean_to_xmlrpc(self, ['extra_capabilities'])
+        clean_self['_target'] = clean_to_xmlrpc(clean_self['_target'], ['parent'])
+        return clean_self
+
+class AiroscriptSession(Airoscript):
     """
         Basic airoscript-ng object.
         This is the basic airoscript-ng object.
         An Airoscript object is composed of multiple sessions.
         TODO: Airoscript object might need to be swapped with this.
+        Also, this one is the one that handles network interfaces.
 
     """
     def __init__(self, config={}):
@@ -84,26 +135,40 @@ class AiroscriptSession(object):
         self._target = Target()
         self._mon_iface = None
         self.target_dir = tempfile.mkdtemp()
-
         if not 'parameter_file' in self.config:
             self.config['parameter_file'] = "aircrack_base_parameters.json"
         self.parameters = json.load(open(self.config['parameter_file']))
-
         self.aircrack = AircrackSession(self.parameters)
+        self.extra_capabilities = dict([(extra, getattr(getattr(capabilities, extra), 'main')(self)) for extra in capabilities.__all__ ])
+        self.reaver_targets = []
+
+    def list_wifi(self):
+        # If the driver is not using the new stack, screw them.
+        return [ iface for iface in netifaces.interfaces() if "wlan" in iface ]
+
+    def setup_wifi(self, iface):
+        self.config['wifi'] = iface
         os.environ['MON_PREFIX'] = self.config["name"]
         self.should_be_mon_iface = self.config["name"] + "0"
-
-        self.extra_capabilities = dict([(extra, getattr(getattr(capabilities, extra), 'main')(self)) for extra in capabilities.__all__ ])
+        self.mac_addr = netifaces.ifaddresses(self.config['wifi'])[netifaces.AF_LINK][0]['addr']
 
         if not self.should_be_mon_iface in netifaces.interfaces():
             self.aircrack.airmon(OrderedDict([('command',
                 "start"), ('wireless', self.config["wifi"])]), self.set_mon_iface)
         else:
             self._mon_iface = self.should_be_mon_iface
+        return self._mon_iface
+
+    def get_mac_addr(self):
+        return self.mac_addr
 
     @property
     def mon_iface(self):
         return self._mon_iface
+
+    @mon_iface.setter
+    def mon_iface(self, mon_iface):
+        self._mon_iface = mon_iface
 
     def set_mon_iface(self, result):
         mon_result = result.communicate()
@@ -124,10 +189,7 @@ class AiroscriptSession(object):
         return self.get_target
 
     def get_target(self):
-        _ = self._target.__dict__.copy()
-        _.pop('properties')
-        _.pop('parent')
-        return _
+        return clean_to_xmlrpc(self._target, ['properties', 'parent'])
 
     @target.setter
     def target(self, target):
@@ -153,63 +215,32 @@ class AiroscriptSession(object):
     def get_current_targets(self):
         aps = []
         clients = []
-        with open("{}/{}-01.csv".format(self.target_dir, self.config["name"])) as f:
-            dictcsv = [a for a in csv.DictReader(f)]
-        for element in dictcsv:
-            if len(element[None]) < 8:
-                clients.append(element[None])
-            else:
-                aps.append(element[None])
 
+        scan_file = "{}/{}-01.csv".format(self.target_dir, self.config["name"])
+        with open(scan_file) as f:
+            dictcsv = [a for a in csv.DictReader(f, skipinitialspace=True)]
+
+        if "reaver" in self.extra_capabilities:
+            self.reaver_targets = self.extra_capabilities['reaver'].scan(scan_file)
+
+        for element in dictcsv:
+            element = element[None]
+            if len(element) < 8:
+                clients.append(element)
+            else:
+                aps.append(element)
+        if len(aps) == 0:
+            return False
         ap_headers = aps.pop(0)
         client_headers = [a.lstrip(" ") for a in clients.pop(0)]
 
-        return {'clients': [zip(client_headers, client) for client in clients], 'aps': [zip(ap_headers, ap) for ap in aps]}
+        return {'clients': [zip(client_headers, client) for client in clients], 'aps': [Target(self).from_dict(dict(zip(ap_headers, ap))) for ap in aps]}
 
-    def rebump(self, pid):
-        """
-            Launches sigint to a process.
-            In airodump-ng this means updating the csv contents
-        """
-        return os.kill(pid, 2)
-
-    def on_scan(self, pid):
-        self.rebump(pid)
-        time.sleep(1)
-        debug("Ok, now you can read current_targets")
-        return pluginmanager.trigger_event(
-            "on_after_scan",
-            target = self.target,
-            session = self,
-        )
-
-    def scan(self, options=OrderedDict()):
-        pluginmanager.trigger_event(
-            "on_before_scan",
-            target = self.target,
-            session = self,
-        )
-        final_options = OrderedDict([
-                ('dump_prefix', self.target_dir + "/" + self.config["name"]),
-                ('wireless', self.mon_iface)
-        ])
-        final_options.update(options.items())
-
-        result = self.aircrack.airodump(final_options, lambda x: True)
-
-        # We wait default scan time and ask for airodump-ng to re-bump.
-        # With this we can have an airodump-ng continuously scanning on background until we want to get to a fixed channel
-        # TODO Maybe magic with fixed / hoping channels and different cards?
-        Timer(int(self.config['scan_time']), self.on_scan, (result.result().result.pid))
-        # I'm not sure this way of ensuring method chaining is really OK. Probably going to change it soon.
-        # But the way it was returning the timer is bad for xmlrpc too, so this should probably just return True.
-        # TODO: That ^.
-        clean_return = self.__dict__.copy()
-        clean_return.pop('extra_capabilities')
-        t = clean_return['_target'].__dict__
-        t.pop('parent')
-        clean_return['_target'] = t
-        return clean_return
+def clean_to_xmlrpc(element, to_clean):
+    res = element.__dict__.copy()
+    for el in to_clean:
+        res.pop(el)
+    return res
 
 class Target(object):
     def __init__(self, parent=False):
@@ -227,11 +258,15 @@ class Target(object):
 
     def from_dict(self, dict_):
         self.bssid = dict_['BSSID'].strip()
-        self.essid = dict_[' ESSID'].strip()
-        self.power = dict_[' Power'].strip()
-        self.encryption = dict_[' Privacy'].strip(),
+        self.essid = dict_['ESSID'].strip()
+        self.power = dict_['Power'].strip()
+        self.encryption = dict_['Privacy'].strip(),
         self.hackability = self.get_hackability()
-        return self
+        # A few todos:
+        # Put here the rest of the data.
+        # Order targets.
+        # Create targets
+        return clean_to_xmlrpc(self, ['properties', 'parent'])
 
     def get_hackability(self):
         points = 0
@@ -239,29 +274,25 @@ class Target(object):
         for essid in broken.ESSIDS:
             if essid in self.essid:
                 points += 50
-        points += - int(self.power)
+        points += - (int(self.power) * 10)
 
-        if self.encryption in broken.PRIVACY:
-            points += broken.PRIVACY[self.encryption][0]
-            techs.append(broken.PRIVACY[self.encryption][1])
+        if self.encryption[0] in broken.PRIVACY:
+            points += broken.PRIVACY[self.encryption[0]][0]
+            techs.append(broken.PRIVACY[self.encryption[0]][1])
 
         if "reaver" in self.parent.extra_capabilities:
-            scan_file = "{}/{}-01.csv".format(self.parent.target_dir, self.parent.config["name"])
-            reaver_targets = self.parent.extra_capabilities['reaver'].scan(scan_file)
-            if self.bssid in [ a['bssid'] for a in reaver_targets]:
+            if self.bssid in [ a['bssid'] for a in self.parent.reaver_targets]:
                 points += 800
                 techs.append("reaver")
 
         return {
             'name'  : broken.get_hackability_name(points/10),
-            'value' : int(points/10),
+            'value' : int(points/20),
             'techs' : techs
         }
 
     def __repr__(self):
-        self_dict = self.__dict__.copy()
-        self_dict.pop('parent')
-        return "Target object with data: {}".format(self_dict)
+        return clean_to_xmlrpc(self, ['parent'])
 
     @property
     def is_client(self):
