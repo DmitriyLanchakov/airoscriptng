@@ -278,12 +278,12 @@ class Target(object):
 
         if self.encryption[0] in broken.PRIVACY:
             points += broken.PRIVACY[self.encryption[0]][0]
-            techs.append(broken.PRIVACY[self.encryption[0]][1])
+            techs += broken.PRIVACY[self.encryption[0]][1]
 
         if "reaver" in self.parent.extra_capabilities:
             if self.bssid in [ a['bssid'] for a in self.parent.reaver_targets]:
                 points += 800
-                techs.append("reaver")
+                techs.insert("reaver", 1)
 
         return {
             'name'  : broken.get_hackability_name(points/10),
