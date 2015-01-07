@@ -17,12 +17,18 @@ Airoscript-ng python complete implementation
 Features
 --------
 
-* TODO
+* Dynamic aircrack-ng API generation (under airoscriptng.aircrack)
+* Threaded execution
+* Hackability assesment
+* Scanning provides a list of best wireless hacking techniques
+* Session control (for better process control)
+* Wireless monitor interfaces are nicely handled and reused if neccesary
+* XMLRPC server implementation
 
 TODO
 -----
 
-- Better parameter parsing & format for aircrack-ng parameters file
-- Implement more complex attacks on the airoscript class
-- Build a few user interfaces.
-- Hackability should also specify attacks that are effective and their effectiveness
+* Better parameter parsing & format for aircrack-ng parameters file, read them from manpages
+* Implement attacks on airoscript-ng class
+* Implement cracking (and control of it, once cracked stop all attacks against that network)
+* Build a user interface (probably more than one)
