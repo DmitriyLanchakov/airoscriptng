@@ -283,7 +283,7 @@ class Target(object):
         if "reaver" in self.parent.extra_capabilities:
             if self.bssid in [ a['bssid'] for a in self.parent.reaver_targets]:
                 points += 800
-                techs.insert("reaver", 1)
+                techs.insert(1, "reaver")
 
         return {
             'name'  : broken.get_hackability_name(points/10),
