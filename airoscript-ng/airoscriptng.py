@@ -94,6 +94,11 @@ class Airoscript(object):
         )
 
     def end_scan(self):
+        """
+            We send a kill signal to airodump-ng
+            As aircrack object is not aware of this, we must manually change the status
+        """
+        self.aircrackng.executing.remove('airodump-ng')
         return os.kill(self.pids['airodump-ng'], 9)
 
     def scan(self, options=OrderedDict()):
