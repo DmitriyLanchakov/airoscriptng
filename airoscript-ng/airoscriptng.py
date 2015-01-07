@@ -94,6 +94,11 @@ class Airoscript(object):
         )
 
     def end_scan(self):
+        """
+            We send a kill signal to airodump-ng
+            As aircrack object is not aware of this, we must manually change the status
+        """
+        self.aircrackng.executing.remove('airodump-ng')
         return os.kill(self.pids['airodump-ng'], 9)
 
     def scan(self, options=OrderedDict()):
@@ -223,18 +228,25 @@ class AiroscriptSession(Airoscript):
         if "reaver" in self.extra_capabilities:
             self.reaver_targets = self.extra_capabilities['reaver'].scan(scan_file)
 
+        currently_processing_aps = True
         for element in dictcsv:
             element = element[None]
-            if len(element) < 8:
-                clients.append(element)
+            if currently_processing_aps:
+                if element[0] == "Station MAC":
+                    currently_processing_aps = False
+                    clients.append(element)
+                else:
+                    aps.append(element)
             else:
-                aps.append(element)
+                clients.append(element)
+
         if len(aps) == 0:
             return False
+
         ap_headers = aps.pop(0)
         client_headers = [a.lstrip(" ") for a in clients.pop(0)]
-
-        return {'clients': [zip(client_headers, client) for client in clients], 'aps': [Target(self).from_dict(dict(zip(ap_headers, ap))) for ap in aps]}
+        clients = [dict(zip(client_headers, client)) for client in clients]
+        return [Target(self).from_dict(dict(zip(ap_headers, ap)), clients) for ap in aps]
 
 def clean_to_xmlrpc(element, to_clean):
     res = element.__dict__.copy()
@@ -256,16 +268,13 @@ class Target(object):
         for element in self.properties:
             setattr(self.__class__, element, '')
 
-    def from_dict(self, dict_):
+    def from_dict(self, dict_, clients=[]):
         self.bssid = dict_['BSSID'].strip()
         self.essid = dict_['ESSID'].strip()
         self.power = dict_['Power'].strip()
         self.encryption = dict_['Privacy'].strip(),
         self.hackability = self.get_hackability()
-        # A few todos:
-        # Put here the rest of the data.
-        # Order targets.
-        # Create targets
+        self.clients = [client for client in clients if client['Station MAC'] == self.bssid]
         return clean_to_xmlrpc(self, ['properties', 'parent'])
 
     def get_hackability(self):
@@ -293,10 +302,6 @@ class Target(object):
 
     def __repr__(self):
         return clean_to_xmlrpc(self, ['parent'])
-
-    @property
-    def is_client(self):
-        return getattr(self, "associated")
 
 def main():
     logging.basicConfig(
