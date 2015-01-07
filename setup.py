@@ -17,6 +17,7 @@ requirements = [
 ]
 
 test_requirements = [
+    'tox'
     # TODO: put package test requirements here
 ]
 
