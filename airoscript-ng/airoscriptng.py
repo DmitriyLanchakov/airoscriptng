@@ -223,14 +223,21 @@ class AiroscriptSession(Airoscript):
         if "reaver" in self.extra_capabilities:
             self.reaver_targets = self.extra_capabilities['reaver'].scan(scan_file)
 
+        currently_processing_aps = True
         for element in dictcsv:
             element = element[None]
-            if len(element) < 8:
-                clients.append(element)
+            if currently_processing_aps:
+                if element[0] == "Station MAC":
+                    currently_processing_aps = False
+                    clients.append(element)
+                else:
+                    aps.append(element)
             else:
-                aps.append(element)
+                clients.append(element)
+
         if len(aps) == 0:
             return False
+
         ap_headers = aps.pop(0)
         client_headers = [a.lstrip(" ") for a in clients.pop(0)]
         clients = [dict(zip(client_headers, client)) for client in clients]
