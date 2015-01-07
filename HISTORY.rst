@@ -3,7 +3,18 @@
 History
 -------
 
-0.1.0 (2014-10-10)
+0.0.2 (2015-08-01)
+-------------------
+
+* First usable thing, still no attacks
+* "Hackability" property for aps
+* Integrated clients on AP object
+* External plugin support
+* Reaver support
+* XMLRPC Working
+* General cleanup
+
+0.0.1 (2014-12-26)
 ---------------------
 
-* First release on PyPI.
+* First release, monitor mode and scanning working
