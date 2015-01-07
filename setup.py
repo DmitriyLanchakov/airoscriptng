@@ -22,7 +22,7 @@ test_requirements = [
 
 setup(
     name='airoscriptng',
-    version='0.1.0',
+    version='0.0.1',
     description='Airoscript-ng python complete implementation',
     long_description=readme + '\n\n' + history,
     author='David Francos Cuartero',
