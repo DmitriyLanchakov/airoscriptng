@@ -9,6 +9,7 @@ debug = logging.getLogger(__name__).debug
 class Executor(object):
     """
         Executor objects gets created to manage aircrack-ng execution.
+
         It's called from a threadpoolexecutor, this way the future returns this
         as result, having control of the commands called and callback.
     """
@@ -16,7 +17,8 @@ class Executor(object):
                  callback=False, shell=False, direct=False):
         """
             Initialize and execute process
-            If direct param is enabled it'll call check_output instead of Popen
+
+            *If direct=True will call check_output instead of Popen*
         """
         self.command = command
         self.devnull = open('/dev/null', 'w')
@@ -38,7 +40,9 @@ class Executor(object):
 def parse_parameters(attributes, _parameters={}, command="airodump-ng"):
     """
         Main aircrack-ng parameter parsing from the json file is done here.
-        FIXME: this is pretty much broken
+        :TODO:
+            * Handle default parameters gracefully
+            * Automatically generate the json this feeds on
     """
     parameters = []
     if command in attributes:
@@ -59,14 +63,17 @@ def parse_parameters(attributes, _parameters={}, command="airodump-ng"):
 
 class Aircrack(object):
     """
-        Main aircrack-ng class.
-        This class exports a method foreach aircrack-ng binary that get an OrderedDict
-        with the desired parameters as argument
+        Exports a method foreach aircrack-ng binary that gets an OrderedDict
+        with the desired parameters as argument.
+
+        Those parameters must match the ones specified in the json parameter
+        file
     """
     def __init__(self, attributes={}):
         """
             Dinamically creates a function for each aircrack-ng binary.
-            This class should never use self.executing, that's work
+
+            W: This class should never use self.executing, that's work
             for the session handler one.
         """
         self.cmds = dict(zip([b.replace('-ng', '') for b in attributes.keys()],
@@ -80,6 +87,7 @@ class Aircrack(object):
         """
             Plain aircrack-ng just logs the output and calls custom user
             callback (hence this callback).
+
             An aircrack-ng session handler can be used to extend this class
             to avoid having multiple aircrack-ng processes loose
         """
@@ -105,16 +113,19 @@ class AircrackSession(Aircrack):
         Each session should have one or many aircrack-ng objects.
         An aircrack-ng object should be able to execute ONE of EACH
         aircrack-ng suite processes.
-        TODO: maybe exceptions to this.
+
+        :TODO:
+            - Add some exceptions, there are processes of what we might
+                want to have multiple instances running
     """
 
     executing = {}
 
     def callback(self, result):
         """
-            Remove the finished process from self.executing.
-            Then execute the user-defined callback if exists.
-            Otherwise just log output
+            * Remove the finished process from self.executing.
+            * Then execute the user-defined callback if exists.
+            * Otherwise just log output
         """
         result = result.result()
         self.executing.pop(result.command)
