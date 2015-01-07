@@ -233,8 +233,8 @@ class AiroscriptSession(Airoscript):
             return False
         ap_headers = aps.pop(0)
         client_headers = [a.lstrip(" ") for a in clients.pop(0)]
-
-        return {'clients': [zip(client_headers, client) for client in clients], 'aps': [Target(self).from_dict(dict(zip(ap_headers, ap))) for ap in aps]}
+        clients = [dict(zip(client_headers, client)) for client in clients]
+        return [Target(self).from_dict(dict(zip(ap_headers, ap)), clients) for ap in aps]
 
 def clean_to_xmlrpc(element, to_clean):
     res = element.__dict__.copy()
@@ -256,16 +256,13 @@ class Target(object):
         for element in self.properties:
             setattr(self.__class__, element, '')
 
-    def from_dict(self, dict_):
+    def from_dict(self, dict_, clients=[]):
         self.bssid = dict_['BSSID'].strip()
         self.essid = dict_['ESSID'].strip()
         self.power = dict_['Power'].strip()
         self.encryption = dict_['Privacy'].strip(),
         self.hackability = self.get_hackability()
-        # A few todos:
-        # Put here the rest of the data.
-        # Order targets.
-        # Create targets
+        self.clients = [client for client in clients if client['Station MAC'] == self.bssid]
         return clean_to_xmlrpc(self, ['properties', 'parent'])
 
     def get_hackability(self):
@@ -293,10 +290,6 @@ class Target(object):
 
     def __repr__(self):
         return clean_to_xmlrpc(self, ['parent'])
-
-    @property
-    def is_client(self):
-        return getattr(self, "associated")
 
 def main():
     logging.basicConfig(
