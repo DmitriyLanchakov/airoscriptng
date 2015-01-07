@@ -8,7 +8,8 @@ from collections import OrderedDict
 from SimpleXMLRPCServer import list_public_methods
 from threading import Timer
 import capabilities
-# This whole capabilities stuff is a bad idea. And quite poorly executed. But I'm really tired right now and I want to have reaver stuff working...
+# This whole capabilities stuff is a bad idea. And quite poorly executed.
+# But I'm really tired right now and I want to have reaver stuff working...
 import tempfile
 import logging
 import inspect
@@ -23,11 +24,13 @@ logging.basicConfig(level=logging.DEBUG)
 # Disabled for now
 # pluginmanager.load_plugins("plugins.list")
 
+
 def callback(future):
     if future.exception() is not None:
         debug("Got exception: %s" % future.exception())
     else:
         debug("Process returned %d" % future.result())
+
 
 class AiroscriptSessionManager(object):
     """
@@ -45,7 +48,7 @@ class AiroscriptSessionManager(object):
         if not name:
             name = str(time.time()).replace('.', '')
 
-        if not name in self.session_list:
+        if name not in self.session_list:
             self.session_list[name] = AiroscriptSession({
                 'name': name,
                 'wifi': self.wifi_iface,
@@ -71,6 +74,7 @@ class AiroscriptSessionManager(object):
 class AiroscriptError(Exception):
     pass
 
+
 class Airoscript(object):
 
     pids = {}
@@ -89,14 +93,15 @@ class Airoscript(object):
         Timer(int(self.config['scan_time']), self.on_scan_bumped, (pid))
         return pluginmanager.trigger_event(
             "on_after_scan",
-            target = self.target,
-            session = self,
+            target=self.target,
+            session=self,
         )
 
     def end_scan(self):
         """
             We send a kill signal to airodump-ng
-            As aircrack object is not aware of this, we must manually change the status
+            As aircrack object is not aware of this,
+            we must manually change the status
         """
         self.aircrackng.executing.remove('airodump-ng')
         return os.kill(self.pids['airodump-ng'], 9)
@@ -104,27 +109,30 @@ class Airoscript(object):
     def scan(self, options=OrderedDict()):
         pluginmanager.trigger_event(
             "on_before_scan",
-            target = self.target,
-            session = self,
+            target=self.target,
+            session=self,
         )
         final_options = OrderedDict([
-                ('dump_prefix', self.target_dir + "/" + self.config["name"]),
-                ('wireless', self.mon_iface)
+            ('dump_prefix', self.target_dir + "/" + self.config["name"]),
+            ('wireless', self.mon_iface)
         ])
         final_options.update(options.items())
 
         result = self.aircrack.airodump(final_options, lambda x: True)
 
         # We wait default scan time and ask for airodump-ng to re-bump.
-        # With this we can have an airodump-ng continuously scanning on background until we want to get to a fixed channel
+        # With this we can have an airodump-ng continuously scanning
+        # on background until we want to get to a fixed channel
         # TODO Maybe magic with fixed / hoping channels and different cards?
         pid = result.result().result.pid
         Timer(int(self.config['scan_time']), self.on_scan_bumped, (pid))
         self.pids['airodump-ng'] = pid
 
         clean_self = clean_to_xmlrpc(self, ['extra_capabilities'])
-        clean_self['_target'] = clean_to_xmlrpc(clean_self['_target'], ['parent'])
+        clean_self['_target'] = clean_to_xmlrpc(
+            clean_self['_target'], ['parent'])
         return clean_self
+
 
 class AiroscriptSession(Airoscript):
     """
@@ -140,26 +148,27 @@ class AiroscriptSession(Airoscript):
         self._target = Target()
         self._mon_iface = None
         self.target_dir = tempfile.mkdtemp()
-        if not 'parameter_file' in self.config:
-            self.config['parameter_file'] = "aircrack_base_parameters.json"
+        if 'parameter_file' not in self.config:
+            self.config['parameter_file'] = "resources/aircrack_base_parameters.json"
         self.parameters = json.load(open(self.config['parameter_file']))
         self.aircrack = AircrackSession(self.parameters)
-        self.extra_capabilities = dict([(extra, getattr(getattr(capabilities, extra), 'main')(self)) for extra in capabilities.__all__ ])
+        self.extra_capabilities = dict([(extra, getattr(getattr(capabilities, extra), 'main')(self)) for extra in capabilities.__all__])
         self.reaver_targets = []
 
     def list_wifi(self):
         # If the driver is not using the new stack, screw them.
-        return [ iface for iface in netifaces.interfaces() if "wlan" in iface ]
+        return [iface for iface in netifaces.interfaces() if "wlan" in iface]
 
     def setup_wifi(self, iface):
         self.config['wifi'] = iface
         os.environ['MON_PREFIX'] = self.config["name"]
         self.should_be_mon_iface = self.config["name"] + "0"
-        self.mac_addr = netifaces.ifaddresses(self.config['wifi'])[netifaces.AF_LINK][0]['addr']
+        ifaddr = netifaces.ifaddresses(self.config['wifi'])
+        self.mac_addr = ifaddr[netifaces.AF_LINK][0]['addr']
 
-        if not self.should_be_mon_iface in netifaces.interfaces():
-            self.aircrack.airmon(OrderedDict([('command',
-                "start"), ('wireless', self.config["wifi"])]), self.set_mon_iface)
+        if self.should_be_mon_iface not in netifaces.interfaces():
+            self.aircrack.airmon(OrderedDict([('command', "start"),
+                ('wireless', self.config["wifi"])]), self.set_mon_iface)
         else:
             self._mon_iface = self.should_be_mon_iface
         return self._mon_iface
@@ -178,11 +187,12 @@ class AiroscriptSession(Airoscript):
     def set_mon_iface(self, result):
         mon_result = result.communicate()
         for line in mon_result[0].splitlines():
-            monitor_test = re.match('(.*)\((.*)monitor mode enabled on (.*)\)(.*)', line)
+            mon_regex = '(.*)\((.*)monitor mode enabled on (.*)\)(.*)'
+            monitor_test = re.match(mon_regex, line)
             if monitor_test:
                 self._mon_iface = monitor_test.group(3)
                 if not self.mon_iface == self.should_be_mon_iface:
-                    debug("Monitor interface is called {} and should be called {}".format(
+                    debug("Monitor interface is {} and should be {}".format(
                         self.mon_iface, self.should_be_mon_iface))
         return True
 
@@ -226,7 +236,8 @@ class AiroscriptSession(Airoscript):
             dictcsv = [a for a in csv.DictReader(f, skipinitialspace=True)]
 
         if "reaver" in self.extra_capabilities:
-            self.reaver_targets = self.extra_capabilities['reaver'].scan(scan_file)
+            self.reaver_targets = self.extra_capabilities['reaver'].scan(
+                scan_file)
 
         currently_processing_aps = True
         for element in dictcsv:
@@ -248,11 +259,13 @@ class AiroscriptSession(Airoscript):
         clients = [dict(zip(client_headers, client)) for client in clients]
         return [Target(self).from_dict(dict(zip(ap_headers, ap)), clients) for ap in aps]
 
+
 def clean_to_xmlrpc(element, to_clean):
     res = element.__dict__.copy()
     for el in to_clean:
         res.pop(el)
     return res
+
 
 class Target(object):
     def __init__(self, parent=False):
@@ -295,13 +308,14 @@ class Target(object):
                 techs.insert(1, "reaver")
 
         return {
-            'name'  : broken.get_hackability_name(points/10),
-            'value' : int(points/20),
-            'techs' : techs
+            'name': broken.get_hackability_name(points/10),
+            'value': int(points/20),
+            'techs': techs
         }
 
     def __repr__(self):
         return clean_to_xmlrpc(self, ['parent'])
+
 
 def main():
     logging.basicConfig(
