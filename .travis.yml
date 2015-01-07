@@ -4,7 +4,8 @@ python:
 
 install:
   - "pip install ."
+  - "pip install tox"
   - "pip install -r requirements.txt"
 
 script: 
-  - "python -m unittest _tests.test_airoscriptng"
+  - "tox""

@@ -13,9 +13,11 @@ history = open('HISTORY.rst').read().replace('.. :changelog:', '')
 
 requirements = [
     "netifaces",
+    "futures"
 ]
 
 test_requirements = [
+    "tox"
 ]
 
 setup(
@@ -48,6 +50,6 @@ setup(
         'Programming Language :: Python :: 3.3',
         'Programming Language :: Python :: 3.4',
     ],
-    test_suite='_tests',
+    test_suite='tests',
     tests_require=test_requirements
 )
