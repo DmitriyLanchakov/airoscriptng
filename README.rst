@@ -2,9 +2,6 @@
 Airoscript-ng
 ===============================
 
-.. image:: https://badge.fury.io/py/airoscript-ng.png
-    :target: http://badge.fury.io/py/airoscript-ng
-
 .. image:: https://travis-ci.org/XayOn/airoscript-ng.png?branch=master
         :target: https://travis-ci.org/XayOn/airoscript-ng
 
@@ -14,7 +11,7 @@ Airoscript-ng
 
 Airoscript-ng python complete implementation
 
-* Free software: BSD license
+* Free software: GNU GENERAL PUBLIC LICENSE 2
 * Documentation: https://airoscript-ng.readthedocs.org.
 
 Features
