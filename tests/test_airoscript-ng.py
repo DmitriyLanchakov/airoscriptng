@@ -13,7 +13,7 @@ import unittest
 from airoscriptng import airoscriptng
 
 
-class TestAiroscript-ng(unittest.TestCase):
+class TestAiroscriptng(unittest.TestCase):
 
     def setUp(self):
         pass
