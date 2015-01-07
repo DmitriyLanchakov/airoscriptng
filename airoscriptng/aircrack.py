@@ -5,29 +5,35 @@ import logging
 import subprocess
 debug = logging.getLogger(__name__).debug
 
+
 class Executor(object):
-    def __init__(self, command="airmon-ng", _parameters={}, callback=False, wait=False, shell=False, direct=False):
+    def __init__(self, command="airmon-ng", _parameters={},
+                 callback=False, shell=False, direct=False):
         self.command = command
         self.devnull = open('/dev/null', 'w')
         self.callback = callback
         parameters = _parameters
 
-        logging.debug("Launching: {} {} {}".format(command, parameters, callback))
+        logging.debug("Launching: {} {} {}".format(
+            command, parameters, callback))
 
         if direct:
             self.result = subprocess.check_output([command] + parameters)
         else:
             self.result = subprocess.Popen([command] + parameters,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=shell)
+                                           stdout=subprocess.PIPE,
+                                           stderr=subprocess.PIPE,
+                                           shell=shell)
 
-def parse_parameters( attributes, _parameters={}, command="airodump-ng"):
+
+def parse_parameters(attributes, _parameters={}, command="airodump-ng"):
     parameters = []
     if command in attributes:
         for name, param in attributes[command].iteritems():
-            if param[1] and not name in _parameters:
+            if param[1] and name not in _parameters:
                 if param[0]:
                     parameters.append(param[0])
-                if param[1] != True:
+                if param[1] is not True:
                     parameters.append(param[1])
         for name, param in _parameters.iteritems():
             if name in attributes[command]:
@@ -38,13 +44,16 @@ def parse_parameters( attributes, _parameters={}, command="airodump-ng"):
     # TODO FIXME DEFAULTS DONT WORK OK HERE
     return parameters
 
+
 class Aircrack(object):
     def __init__(self, attributes={}):
         """
             Dinamically creates a function for each aircrack-ng binary.
-            This class should never use self.executing, that's work for the session handler one.
+            This class should never use self.executing, that's work
+            for the session handler one.
         """
-        self.cmds = dict(zip([b.replace('-ng', '') for b in attributes.keys()], attributes.keys()))
+        self.cmds = dict(zip([b.replace('-ng', '') for b in attributes.keys()],
+                             attributes.keys()))
         self.attributes = attributes
 
         for name in self.cmds.keys():
@@ -56,6 +65,7 @@ class Aircrack(object):
         f.add_done_callback(self.callback)
         pool.shutdown(wait=True)
         return f
+
 
 class AircrackSession(Aircrack):
     """
@@ -80,15 +90,17 @@ class AircrackSession(Aircrack):
     def execute(self, *args, **kwargs):
         callback = kwargs['callback']
         command = args[0]
-        kwargs['_parameters'] = parse_parameters(self.attributes, kwargs['_parameters'], command)
+        kwargs['_parameters'] = parse_parameters(
+            self.attributes, kwargs['_parameters'], command)
         if not callback:
-            debug("Defaulting to debug callback for command {} ".format(command))
+            debug("Defaulting cb for command {} ".format(command))
             callback = lambda x: debug(x)
 
         if command in self.executing.keys():
-            raise AircrackError('Cannot execute %s, it\'s already executing' %command)
-        self.executing[command] = [ ]
+            raise AircrackError('{} is already executing'.format(command))
+        self.executing[command] = []
         return self.launch(*args, **kwargs)
+
 
 class AircrackError(Exception):
     pass

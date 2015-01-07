@@ -2,15 +2,15 @@
 # -*- coding: utf-8 -*-
 
 """
-test_airoscript-ng
+test_airoscriptng
 ----------------------------------
 
-Tests for `airoscript-ng` module.
+Tests for `airoscriptng` module.
 """
 
 import unittest
 
-from airoscript-ng import airoscript-ng
+from airoscriptng import airoscriptng
 
 
 class TestAiroscript-ng(unittest.TestCase):
