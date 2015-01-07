@@ -7,8 +7,17 @@ debug = logging.getLogger(__name__).debug
 
 
 class Executor(object):
+    """
+        Executor objects gets created to manage aircrack-ng execution.
+        It's called from a threadpoolexecutor, this way the future returns this
+        as result, having control of the commands called and callback.
+    """
     def __init__(self, command="airmon-ng", _parameters={},
                  callback=False, shell=False, direct=False):
+        """
+            Initialize and execute process
+            If direct param is enabled it'll call check_output instead of Popen
+        """
         self.command = command
         self.devnull = open('/dev/null', 'w')
         self.callback = callback
@@ -27,6 +36,10 @@ class Executor(object):
 
 
 def parse_parameters(attributes, _parameters={}, command="airodump-ng"):
+    """
+        Main aircrack-ng parameter parsing from the json file is done here.
+        FIXME: this is pretty much broken
+    """
     parameters = []
     if command in attributes:
         for name, param in attributes[command].iteritems():
@@ -41,11 +54,15 @@ def parse_parameters(attributes, _parameters={}, command="airodump-ng"):
                 if schema[1] and schema[0]:
                     parameters.append(schema[0])
                 parameters.append(param)
-    # TODO FIXME DEFAULTS DONT WORK OK HERE
     return parameters
 
 
 class Aircrack(object):
+    """
+        Main aircrack-ng class.
+        This class exports a method foreach aircrack-ng binary that get an OrderedDict
+        with the desired parameters as argument
+    """
     def __init__(self, attributes={}):
         """
             Dinamically creates a function for each aircrack-ng binary.
@@ -59,7 +76,23 @@ class Aircrack(object):
         for name in self.cmds.keys():
             setattr(self, name, lambda x, y, name_=self.cmds[name]: self.execute(name_, _parameters=x, callback=y))
 
+    def callback(self, result):
+        """
+            Plain aircrack-ng just logs the output and calls custom user
+            callback (hence this callback).
+            An aircrack-ng session handler can be used to extend this class
+            to avoid having multiple aircrack-ng processes loose
+        """
+
+        if type(result.callback) != dict:
+            return result.callback(result.result)
+        return debug(result.result)
+
     def launch(self, *args, **kwargs):
+        """
+            Launch a new pool with one thread for that one process.
+            Then we call the callback.
+        """
         pool = Pool(max_workers=1)
         f = pool.submit(Executor, *args, **kwargs)
         f.add_done_callback(self.callback)
@@ -80,6 +113,8 @@ class AircrackSession(Aircrack):
     def callback(self, result):
         """
             Remove the finished process from self.executing.
+            Then execute the user-defined callback if exists.
+            Otherwise just log output
         """
         result = result.result()
         self.executing.pop(result.command)
@@ -88,6 +123,14 @@ class AircrackSession(Aircrack):
         return debug(result.result)
 
     def execute(self, *args, **kwargs):
+        """
+            Execute aircrack-ng command.
+
+            - Parse parameters
+            - Set up default callback
+            - Check that proccess is not executing already
+            - Then execute launch method.
+        """
         callback = kwargs['callback']
         command = args[0]
         kwargs['_parameters'] = parse_parameters(
@@ -103,4 +146,7 @@ class AircrackSession(Aircrack):
 
 
 class AircrackError(Exception):
+    """
+        Base aircrack exception
+    """
     pass
