@@ -32,7 +32,7 @@ clean-test:
 	rm -fr htmlcov/
 
 lint:
-	flake8 airoscript-ng tests
+	flake8 airoscriptng tests
 
 test:
 	python setup.py test
@@ -41,15 +41,15 @@ test-all:
 	tox
 
 coverage:
-	coverage run --source airoscript-ng setup.py test
+	coverage run --source airoscriptng setup.py test
 	coverage report -m
 	coverage html
 	open htmlcov/index.html
 
 docs:
-	rm -f docs/airoscript-ng.rst
+	rm -f docs/airoscriptng.rst
 	rm -f docs/modules.rst
-	sphinx-apidoc -o docs/ airoscript-ng
+	sphinx-apidoc -o docs/ airoscriptng
 	$(MAKE) -C docs clean
 	$(MAKE) -C docs html
 	open docs/_build/html/index.html

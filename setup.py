@@ -22,23 +22,23 @@ test_requirements = [
 ]
 
 setup(
-    name='airoscript-ng',
+    name='airoscriptng',
     version='0.1.0',
     description='Airoscript-ng python complete implementation',
     long_description=readme + '\n\n' + history,
     author='David Francos Cuartero',
     author_email='me@davidfrancos.net',
-    url='https://github.com/XayOn/airoscript-ng',
+    url='https://github.com/XayOn/airoscriptng',
     packages=[
-        'airoscript-ng',
+        'airoscriptng',
     ],
-    package_dir={'airoscript-ng':
-                 'airoscript-ng'},
+    package_dir={'airoscriptng':
+                 'airoscriptng'},
     include_package_data=True,
     install_requires=requirements,
     license="BSD",
     zip_safe=False,
-    keywords='airoscript-ng',
+    keywords='airoscriptng',
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',
         'Intended Audience :: Developers',

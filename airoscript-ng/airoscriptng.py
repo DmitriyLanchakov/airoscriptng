@@ -136,8 +136,8 @@ class Airoscript(object):
 
 class AiroscriptSession(Airoscript):
     """
-        Basic airoscript-ng object.
-        This is the basic airoscript-ng object.
+        Basic airoscriptng object.
+        This is the basic airoscriptng object.
         An Airoscript object is composed of multiple sessions.
         TODO: Airoscript object might need to be swapped with this.
         Also, this one is the one that handles network interfaces.
