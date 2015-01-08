@@ -15,7 +15,7 @@ Airoscript-ng
 Airoscript-ng python complete implementation
 
 * Free software: GNU GENERAL PUBLIC LICENSE 2
-* Documentation: https://airoscriptng.readthedocs.org.
+* Documentation: http://airoscript-ng.readthedocs.org/en/master
 
 Features
 --------
