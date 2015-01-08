@@ -5,14 +5,17 @@ Airoscript-ng
 .. image:: https://travis-ci.org/XayOn/airoscriptng.png?branch=master
         :target: https://travis-ci.org/XayOn/airoscriptng
 
-.. image:: https://pypip.in/d/airoscriptng/badge.png
+.. image:: https://pypip.in/download/airoscriptng/badge.png
+        :target: https://pypi.python.org/pypi/airoscriptng
+        
+.. image:: https://pypip.in/v/airoscriptng/badge.png
         :target: https://pypi.python.org/pypi/airoscriptng
 
 
 Airoscript-ng python complete implementation
 
 * Free software: GNU GENERAL PUBLIC LICENSE 2
-* Documentation: https://airoscriptng.readthedocs.org.
+* Documentation: http://airoscript-ng.readthedocs.org/en/master
 
 Features
 --------
