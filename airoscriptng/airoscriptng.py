@@ -185,6 +185,41 @@ class Airoscript(object):
         ]))
         return aircrack
 
+    def generic_dissasociation(self):
+        """
+            This does a generic dissasociation attack.
+            Meaning that this attack is both useful on WEP and WPA.
+
+            This can be used both to get ARP replays and WPA handshake.
+
+            See : http://www.aircrack-ng.org/doku.php?id=deauthentication
+        """
+        self.end_scan()
+        # TODO: end_crack too?
+        self.scan()  # TODO: add here filters for target's channel and bssid
+        final_options = OrderedDict([
+            ('target_bssid', self.target.bssid),
+        ])
+        if len(self.target.clients) > 0:
+            final_options.update([
+                ('target_client_bssid', self.target.clients[0]['bssid'])
+            ])  # TODO: that bssid is probably not clean
+
+        # Launch aireplay in dissasoc mode
+        aireplay = self.aircrack.aireplay(final_options, lambda x: True)
+        aireplay_pid = aireplay.result().result.pid
+
+        aircrack = self.crack()
+        aircrack_pid = aircrack.result().result.pid
+
+        return {
+            'status': 'on',
+            'pids': {
+                'aicrack': aircrack_pid,
+                'aireplay': aireplay_pid
+            }
+        }
+
     def is_network_cracked(self):
         """
             If the network has been cracked we'll save the key to a key file
