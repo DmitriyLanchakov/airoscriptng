@@ -3,6 +3,13 @@
 History
 -------
 
+0.0.3 (2015-09-01)
+-------------------
+
+* Improved parameter handling
+* Implemented basic cracking
+* First attack scheduled for v0.4
+
 0.0.2 (2015-08-01)
 -------------------
 
