@@ -25,25 +25,34 @@ logging.basicConfig(level=logging.DEBUG)
 # pluginmanager.load_plugins("plugins.list")
 
 
-def callback(future):
-    if future.exception() is not None:
-        debug("Got exception: %s" % future.exception())
-    else:
-        debug("Process returned %d" % future.result())
-
-
 class AiroscriptSessionManager(object):
     """
+        Airoscript-ng session manager.
+
+        We can have multiple airoscript-ng sessions running on different
+        interfaces
+
+        Each one will have an aircrack-ng session so we can execute only one
+        process of each kind in each interface, to avoid collisions.
+
+        A session manager object should be used on xmlrpc sessions (but a
+        airoscript session alone can be used too)
     """
     def __init__(self, wifi_iface):
+        """
+            Initialize empty session list
+        """
         self.session_list = {}
-        self.wifi_iface = wifi_iface
 
     def create_session(self, name=False, sleep_time=2, scan_time=2):
         """
             Create a AiroscriptSession object and assigns it to session_list
+
             If no name provided it will take current time
             (used to create monitor wireless interface)
+
+            Note that *this does not setup monitor mode* so we have to call
+            the session's setup_wifi method each time.
         """
         if not name:
             name = str(time.time()).replace('.', '')
@@ -51,7 +60,6 @@ class AiroscriptSessionManager(object):
         if name not in self.session_list:
             self.session_list[name] = AiroscriptSession({
                 'name': name,
-                'wifi': self.wifi_iface,
                 'sleep_time': sleep_time,
                 'scan_time': scan_time
             })
@@ -61,21 +69,37 @@ class AiroscriptSessionManager(object):
         return self.session_list[name]
 
     def get_session(self, session_name):
+        """
+            XMLRPC method returning a specific session object.
+        """
         return self.session_list[session_name]
 
     def _listMethods(self):
+        """
+            Hack to return public methods of this object via XMLRPC
+
+            :TODO:
+                - Make this work
+        """
         return list_public_methods(self)
 
     def _methodHelp(self, method):
+        """
+            Hack to return public methods' help of this object via XMLRPC
+
+            :TODO:
+                - Make this work
+        """
+
         f = getattr(self, method)
         return inspect.getdoc(f)
 
 
-class AiroscriptError(Exception):
-    pass
-
-
 class Airoscript(object):
+    """
+        Main airoscript object.
+        Contains not-that-direct aircrack-ng interaction methods and attacks
+    """
 
     pids = {}
 
@@ -87,9 +111,15 @@ class Airoscript(object):
         return os.kill(pid, 2)
 
     def on_scan_bumped(self, pid):
+        """
+            Callback to execute each time we rebump on scan().
+            This schedulles a re-rebump so it's made periodically.
+            That's how we'll get periodically (each second) updated csv files
+
+            This implements the plugin system, calling on_after_scan
+        """
         self.rebump(pid)
         time.sleep(1)
-        # Periodically bump it.
         Timer(int(self.config['scan_time']), self.on_scan_bumped, (pid))
         return pluginmanager.trigger_event(
             "on_after_scan",
@@ -107,6 +137,13 @@ class Airoscript(object):
         return os.kill(self.pids['airodump-ng'], 9)
 
     def scan(self, options=OrderedDict()):
+        """
+            Main scanning function.
+            Launches airodump-ng, saves its pid,
+            and makes itself xmlrpc representable.
+
+            This implements the plugin system, calling on_before_scan
+        """
         pluginmanager.trigger_event(
             "on_before_scan",
             target=self.target,
@@ -136,14 +173,20 @@ class Airoscript(object):
 
 class AiroscriptSession(Airoscript):
     """
-        Basic airoscriptng object.
+        Basic airoscriptng session object.
         This is the basic airoscriptng object.
-        An Airoscript object is composed of multiple sessions.
-        TODO: Airoscript object might need to be swapped with this.
-        Also, this one is the one that handles network interfaces.
+        Handles network interfaces.
+        Main interaction with outer world will be here.
 
     """
     def __init__(self, config={}):
+        """
+            Sets up main file.
+
+            :TODO:
+                - Make parameter_file default value configurable, or shorter.
+                - Extra-capabilities stuff is still confusing
+        """
         self.config = config
         self._target = Target()
         self._mon_iface = None
@@ -156,10 +199,19 @@ class AiroscriptSession(Airoscript):
         self.reaver_targets = []
 
     def list_wifi(self):
+        """
+            Returns a list of all the available wireless networks
+        """
         # If the driver is not using the new stack, screw them.
         return [iface for iface in netifaces.interfaces() if "wlan" in iface]
 
     def setup_wifi(self, iface):
+        """
+            Starts monitor mode interface and checks it's ok.
+
+            :TODO:
+                - Injection test.
+        """
         self.config['wifi'] = iface
         os.environ['MON_PREFIX'] = self.config["name"]
         self.should_be_mon_iface = self.config["name"] + "0"
@@ -174,17 +226,30 @@ class AiroscriptSession(Airoscript):
         return self._mon_iface
 
     def get_mac_addr(self):
+        """
+            Return mac address of the interface
+        """
         return self.mac_addr
 
     @property
     def mon_iface(self):
+        """
+            Return current monitor interface name
+        """
         return self._mon_iface
 
     @mon_iface.setter
     def mon_iface(self, mon_iface):
+        """
+            Sets monitor interface (setter)
+        """
         self._mon_iface = mon_iface
 
     def set_mon_iface(self, result):
+        """
+            Sets monitor interface.
+            Checks that final monitor interface is really what it should be.
+        """
         mon_result = result.communicate()
         for line in mon_result[0].splitlines():
             mon_regex = '(.*)\((.*)monitor mode enabled on (.*)\)(.*)'
@@ -197,17 +262,29 @@ class AiroscriptSession(Airoscript):
         return True
 
     def del_mon_iface(self):
+        """
+            Deletes own monitor interface from system (cleanup)
+        """
         return self.aircrack.launch("iw", [self.mon_iface, "del"])
 
     @property
     def target(self):
+        """
+            Returns currently selected target (getter)
+        """
         return self.get_target
 
     def get_target(self):
+        """
+            Returns currently selected target, clean to send it via xmlrpc
+        """
         return clean_to_xmlrpc(self._target, ['properties', 'parent'])
 
     @target.setter
     def target(self, target):
+        """
+            target setter
+        """
         return self.set_target(target)
 
     def set_target(self, target):
@@ -225,9 +302,16 @@ class AiroscriptSession(Airoscript):
 
     @property
     def current_targets(self):
+        """
+            Returns current targets (getter)
+        """
         return self.get_current_targets()
 
     def get_current_targets(self):
+        """
+            Parses airodump-ng's output file, creating a Target object
+            for each AP found, with its currently detected clients.
+        """
         aps = []
         clients = []
 
@@ -261,6 +345,9 @@ class AiroscriptSession(Airoscript):
 
 
 def clean_to_xmlrpc(element, to_clean):
+    """
+        Cleans certain properties from dict representation of given object
+    """
     res = element.__dict__.copy()
     for el in to_clean:
         res.pop(el)
@@ -268,7 +355,15 @@ def clean_to_xmlrpc(element, to_clean):
 
 
 class Target(object):
+    """
+        Target object, this represents an access point
+    """
     def __init__(self, parent=False):
+        """
+            We pass on parent so we can access some of its methods.
+            :TODO:
+                - That might not be the best, have it in mind
+        """
         self.parent = parent
         self.properties = [
             'bssid',
@@ -282,6 +377,10 @@ class Target(object):
             setattr(self.__class__, element, '')
 
     def from_dict(self, dict_, clients=[]):
+        """
+            Do some magic, get only its clients from the client list,
+            strip extra whitespace in properties, and get its hackability
+        """
         self.bssid = dict_['BSSID'].strip()
         self.essid = dict_['ESSID'].strip()
         self.power = dict_['Power'].strip()
@@ -291,6 +390,14 @@ class Target(object):
         return clean_to_xmlrpc(self, ['properties', 'parent'])
 
     def get_hackability(self):
+        """
+            This assets a network hackability based on:
+
+            * Network power
+            * Network encryption
+            * WPS availability
+            * Dictionary availability
+        """
         points = 0
         techs = []
         for essid in broken.ESSIDS:
@@ -303,7 +410,7 @@ class Target(object):
             techs += broken.PRIVACY[self.encryption[0]][1]
 
         if "reaver" in self.parent.extra_capabilities:
-            if self.bssid in [ a['bssid'] for a in self.parent.reaver_targets]:
+            if self.bssid in [a['bssid'] for a in self.parent.reaver_targets]:
                 points += 800
                 techs.insert(1, "reaver")
 
@@ -314,11 +421,8 @@ class Target(object):
         }
 
     def __repr__(self):
+        """
+            Clean representation, remove parent wich gives a circular
+            result, not XMLRPC representable
+        """
         return clean_to_xmlrpc(self, ['parent'])
-
-
-def main():
-    logging.basicConfig(
-        level=logging.debug,
-        format=("%(relativeCreated)04d %(process)05d %(threadName)-10s "
-                "%(levelname)-5s %(msg)s"))
