@@ -7,6 +7,9 @@ Airoscript-ng
 
 .. image:: https://pypip.in/d/airoscriptng/badge.png
         :target: https://pypi.python.org/pypi/airoscriptng
+        
+.. image:: https://pypip.in/v/airoscriptng/badge.png
+        :target: https://pypi.python.org/pypi/airoscriptng
 
 
 Airoscript-ng python complete implementation
