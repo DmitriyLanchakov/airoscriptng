@@ -18,6 +18,8 @@ import os
 import re
 import csv
 from aircrack import AircrackSession
+from SimpleXMLRPCServer import SimpleXMLRPCServer
+
 debug = logging.getLogger(__name__).debug
 logging.basicConfig(level=logging.DEBUG)
 
@@ -426,3 +428,13 @@ class Target(object):
             result, not XMLRPC representable
         """
         return clean_to_xmlrpc(self, ['parent'])
+
+
+if __name__ == "__main__":
+    server = SimpleXMLRPCServer(("localhost", 8000), allow_none=True)
+    server.register_instance(AiroscriptSession({'name': 'one',
+                                                'wifi': 'wlan0',
+                                                'scan_time': '10'}
+                                               ), allow_dotted_names=True)
+    server.register_introspection_functions()
+    server.serve_forever()
