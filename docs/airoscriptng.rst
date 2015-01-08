@@ -27,14 +27,6 @@ airoscriptng.airoscriptng module
     :undoc-members:
     :show-inheritance:
 
-airoscriptng.airoscriptxmlrpc module
-------------------------------------
-
-.. automodule:: airoscriptng.airoscriptxmlrpc
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
 airoscriptng.broken module
 --------------------------
 
