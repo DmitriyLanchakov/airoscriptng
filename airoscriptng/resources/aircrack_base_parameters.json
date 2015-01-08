@@ -5,12 +5,12 @@
         "filter_unassociated_clients": ["-a", false],
         "update" : ["--update", "20"],
         "ignore_one" : ["--ignore-negative-one", true],
-        "wireless": [false, "mon0"],
+        "wireless": ["mon0"],
         "dump_prefix" : ["-w", "/tmp"]
     },
     "airmon-ng": {
-        "command": [false, "start"],
-        "wireless": [false, "wlan0"]
+        "command": ["start"],
+        "wireless": ["wlan0"]
     }
 }
 
