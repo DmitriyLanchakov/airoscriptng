@@ -13,6 +13,7 @@ import capabilities
 import tempfile
 import logging
 import inspect
+import psutil
 import netifaces
 import os
 import re
@@ -212,32 +213,15 @@ class Airoscript(object):
         aircrack = self.crack()
         aircrack_pid = aircrack.result().result.pid
 
-        return {
-            'status': 'on',
-            'pids': {
-                'aicrack': aircrack_pid,
-                'aireplay': aireplay_pid
-            }
+        self.target.pids = {
+            'aicrack': aircrack_pid,
+            'aireplay': aireplay_pid
         }
 
-    def is_network_cracked(self):
-        """
-            If the network has been cracked we'll save the key to a key file
-            for that specific target. This function just asks if the network
-            has been cracked. Possibly not going to be used as network_key
-            returns False if not cracked.
-        """
-        return os.exists(self.target.key_file)
-
-    def network_key(self):
-        """
-            Return network key or False if network has not been cracked.
-        """
-        if not self.is_network_cracked():
-            return False
-        with open(self.target.key_file) as keyf:
-            return keyf.readlines()
-
+        return {
+            'status': 'on',
+            'pids': self.target.pids
+        }
 
 class AiroscriptSession(Airoscript):
     """
@@ -432,6 +416,7 @@ class Target(object):
             :TODO:
                 - That might not be the best, have it in mind
         """
+        self.pids = {}
         self.parent = parent
         self.properties = [
             'bssid',
@@ -444,10 +429,68 @@ class Target(object):
         for element in self.properties:
             setattr(self.__class__, element, '')
 
+    def is_attack_running(self):
+        """
+            Returns True if the ALL the attack processes are still executing
+            This means that:
+
+                - If part of the attack (I.E replaying) has stopped, will
+                consider the attack finished.
+                - If the processes don't die after the attack is successful,
+                it wont consider the attack finished.
+
+            That's why we'll combine it with is_cracked and key
+        """
+        return all([psutil.pid_exists(pid) for pid in self.pids.values()])
+
+    def is_attack_finished(self):
+        """
+            Return if the attack is finished.
+            This is a more complete check that is_attack_running,
+            it has in account if the network has been cracked and
+            if the attack has actually started.
+        """
+        if self.is_network_cracked():
+            return True
+        return self.pids is not {} and not self.is_attack_running()
+
     @property
     def key_file(self):
         return os.path.join(self.parent.target_dir, "{}.{}".format(
             self.bssid.replace(':', '_'), "key"))
+
+    def is_network_cracked(self):
+        """
+            If the network has been cracked we'll save the key to a key file
+            for that specific target. This function just asks if the network
+            has been cracked. Possibly not going to be used as network_key
+            returns False if not cracked.
+        """
+        return os.exists(self.key_file)
+
+    def cleanup(self):
+        """
+            kill all related PIDS and clean them.
+        """
+        pids = self.pids.copy()
+        self.pids = {}
+        return [os.kill(pid) for pid in pids.values()]
+
+    @property
+    def key(self):
+        """
+            Return network key or False if network has not been cracked.
+        """
+        return self.get_key()
+
+    def get_key(self):
+        """
+            XMLRPC function for key()
+        """
+        if not self.is_network_cracked():
+            return False
+        with open(self.key_file) as keyf:
+            return keyf.readlines()
 
     def from_dict(self, dict_, clients=[]):
         """
