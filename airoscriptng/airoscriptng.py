@@ -409,6 +409,11 @@ class Target(object):
         for element in self.properties:
             setattr(self.__class__, element, '')
 
+    @property
+    def key_file(self):
+        return os.path.join(self.parent.target_dir, "{}.{}".format(
+            self.bssid.replace(':', '_'), "key"))
+
     def from_dict(self, dict_, clients=[]):
         """
             Do some magic, get only its clients from the client list,
