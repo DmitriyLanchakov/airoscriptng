@@ -172,6 +172,37 @@ class Airoscript(object):
             clean_self['_target'], ['parent'])
         return clean_self
 
+    def crack(self):
+        """
+            Launches aircrack-ng in infinite mode against current target.
+            :TODO: This should probably be better managed by set_target.
+        """
+        # Launch aircrack to crack indefinitely
+        aircrack = self.aircrack.aircrack(OrderedDict([
+            ('target_file', self.target.key_file),
+            ('target_bssid', self.target.bssid),
+            ('cap_file', os.path.join(self.target_dir, self.name + "-01.cap"))
+        ]))
+        return aircrack
+
+    def is_network_cracked(self):
+        """
+            If the network has been cracked we'll save the key to a key file
+            for that specific target. This function just asks if the network
+            has been cracked. Possibly not going to be used as network_key
+            returns False if not cracked.
+        """
+        return os.exists(self.target.key_file)
+
+    def network_key(self):
+        """
+            Return network key or False if network has not been cracked.
+        """
+        if not self.is_network_cracked():
+            return False
+        with open(self.target.key_file) as keyf:
+            return keyf.readlines()
+
 
 class AiroscriptSession(Airoscript):
     """
