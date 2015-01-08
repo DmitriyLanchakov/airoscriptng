@@ -430,7 +430,11 @@ class Target(object):
         return clean_to_xmlrpc(self, ['parent'])
 
 
-if __name__ == "__main__":
+def airoscriptxmlrpc():
+    """
+        Simple xmlrpc server for airoscriptsession.
+        :TODO: - Make it multisession
+    """
     server = SimpleXMLRPCServer(("localhost", 8000), allow_none=True)
     server.register_instance(AiroscriptSession({'name': 'one',
                                                 'wifi': 'wlan0',
@@ -438,3 +442,6 @@ if __name__ == "__main__":
                                                ), allow_dotted_names=True)
     server.register_introspection_functions()
     server.serve_forever()
+
+if __name__ == "__main__":
+    airoscriptxmlrpc()
