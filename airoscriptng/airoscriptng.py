@@ -374,7 +374,8 @@ class AiroscriptSession(Airoscript):
         ap_headers = aps.pop(0)
         client_headers = [a.lstrip(" ") for a in clients.pop(0)]
         clients = [dict(zip(client_headers, client)) for client in clients]
-        return [Target(self).from_dict(dict(zip(ap_headers, ap)), clients) for ap in aps]
+        a = [Target(self).from_dict(dict(zip(ap_headers, ap)), clients) for ap in aps]
+        return sorted(a, key=lambda x: x['hackability']['value'], reverse=True)
 
 
 def clean_to_xmlrpc(element, to_clean):
