@@ -2,6 +2,7 @@
 # - encoding:utf-8 - #
 from concurrent.futures import ThreadPoolExecutor as Pool
 import logging
+import itertools
 import subprocess
 debug = logging.getLogger(__name__).debug
 
@@ -41,24 +42,38 @@ def parse_parameters(attributes, _parameters={}, command="airodump-ng"):
     """
         Main aircrack-ng parameter parsing from the json file is done here.
         :TODO:
-            * Handle default parameters gracefully
             * Automatically generate the json this feeds on
+
+        Parameter format is as follows:
+
+        ::
+
+            {
+                'main_command': {
+                    'name_in_airoscript' : ['--flag_in_aircrack', "default_value"]
+                }
+            }
+
+        If default_value is True, it'll be assumed that is a flag that dont
+        require an argument, and we want it by default enabled.
+
+        If it's false, the same will be assumed, but will by default disabled.
+
+        All parameters can be overriden
     """
-    parameters = []
-    if command in attributes:
-        for name, param in attributes[command].iteritems():
-            if param[1] and name not in _parameters:
-                if param[0]:
-                    parameters.append(param[0])
-                if param[1] is not True:
-                    parameters.append(param[1])
-        for name, param in _parameters.iteritems():
-            if name in attributes[command]:
-                schema = attributes[command][name]
-                if schema[1] and schema[0]:
-                    parameters.append(schema[0])
-                parameters.append(param)
-    return parameters
+    _attributes = attributes.copy()
+    for name in attributes[command].keys():
+        if name in _parameters:
+            if _parameters[name][-1] is False:
+                _attributes[command].pop(name)
+            elif _parameters[name][-1] is True:
+                del(_attributes[command][name][-1])
+            else:
+                _attributes[command][name][-1] = _parameters[name]
+        if attributes[command][name][-1] is False and name in _attributes[command]:
+            _attributes[command].pop(name)
+
+    return list(itertools.chain(*_attributes[command].values()))
 
 
 class Aircrack(object):
