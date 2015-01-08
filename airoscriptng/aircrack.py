@@ -64,14 +64,17 @@ def parse_parameters(attributes, _parameters={}, command="airodump-ng"):
     _attributes = attributes.copy()
     for name in attributes[command].keys():
         if name in _parameters:
-            if _parameters[name][-1] is False:
-                _attributes[command].pop(name)
-            elif _parameters[name][-1] is True:
-                del(_attributes[command][name][-1])
-            else:
-                _attributes[command][name][-1] = _parameters[name]
+            _attributes[command][name][-1] = _parameters[name]
         if attributes[command][name][-1] is False and name in _attributes[command]:
             _attributes[command].pop(name)
+
+    for name in _attributes[command].keys():
+        if _attributes[command][name][-1] is False:
+            _attributes[command].pop(name)
+        elif _attributes[command][name][-1] is True:
+            del(_attributes[command][name][-1])
+
+    print _attributes[command].values()
 
     return list(itertools.chain(*_attributes[command].values()))
 
