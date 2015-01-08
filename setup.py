@@ -28,6 +28,7 @@ setup(
     author='David Francos Cuartero',
     author_email='me@davidfrancos.net',
     url='https://github.com/XayOn/airoscriptng',
+    download_url='https://github.com/XayOn/airoscriptng/tarball/0.2',
     packages=[
         'airoscriptng',
     ],
