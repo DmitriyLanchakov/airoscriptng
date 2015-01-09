@@ -13,7 +13,8 @@ history = open('HISTORY.rst').read().replace('.. :changelog:', '')
 
 requirements = [
     "netifaces",
-    "futures"
+    "futures",
+    "psutil"
 ]
 
 test_requirements = [

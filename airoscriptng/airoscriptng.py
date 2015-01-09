@@ -447,9 +447,10 @@ class Target(object):
             Returns True if the ALL the attack processes are still executing
             This means that:
 
-                - If part of the attack (I.E replaying) has stopped, will
+                If part of the attack (I.E replaying) has stopped, will
                 consider the attack finished.
-                - If the processes don't die after the attack is successful,
+
+                If the processes don't die after the attack is successful,
                 it wont consider the attack finished.
 
             That's why we'll combine it with is_cracked and key
