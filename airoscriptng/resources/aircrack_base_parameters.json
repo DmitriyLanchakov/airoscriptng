@@ -7,6 +7,17 @@
         "ignore_one" : ["--ignore-negative-one", true],
         "wireless": ["mon0"],
         "dump_prefix" : ["-w", "/tmp"]
+        "save_beacons":["--beacons", true],
+        "update_seconds":["--update", 80],
+        "show_ack": ["--showack", false],
+        "hoping_time": ["-f", 1000],
+        "output_format": ["--output-format", "csv,pcap,ivs"],
+        "ignore_negative_one": ["--ignore-negative-one", true],
+        "filter_encrypt": ["filter_encrypt", false],
+        "channel": ["--channel", false],
+        "filter_unassociated_clients": ["-a", true],
+        "filter_bssid": ["--bssid", false],
+        "filter_essid": ["--essid", false]
     },
     "aircrack-ng":{
         "attack_mode": ["-a", false],
