@@ -13,6 +13,7 @@ import capabilities
 import tempfile
 import logging
 import inspect
+import psutil
 import netifaces
 import os
 import re
@@ -135,8 +136,12 @@ class Airoscript(object):
             As aircrack object is not aware of this,
             we must manually change the status
         """
-        self.aircrackng.executing.remove('airodump-ng')
-        return os.kill(self.pids['airodump-ng'], 9)
+        try:
+            self.aircrack.executing.pop('airodump-ng')
+            return os.kill(self.pids['airodump-ng'], 9)
+        except KeyError, err:
+            logging.debug("Received keyerror on {}".format(err))
+        return False
 
     def scan(self, options=OrderedDict()):
         """
@@ -148,7 +153,7 @@ class Airoscript(object):
         """
         pluginmanager.trigger_event(
             "on_before_scan",
-            target=self.target,
+            target=self._target,
             session=self,
         )
         final_options = OrderedDict([
@@ -179,30 +184,52 @@ class Airoscript(object):
         """
         # Launch aircrack to crack indefinitely
         aircrack = self.aircrack.aircrack(OrderedDict([
-            ('target_file', self.target.key_file),
-            ('target_bssid', self.target.bssid),
-            ('cap_file', os.path.join(self.target_dir, self.name + "-01.cap"))
-        ]))
+            ('key_file', self._target.key_file),
+            ('filter_bssid', self._target.bssid),
+            ('cap_file', os.path.join(self.target_dir, self.config["name"] + "-01.cap"))
+        ]), lambda x: True)
         return aircrack
 
-    def is_network_cracked(self):
+    def generic_dissasociation(self):
         """
-            If the network has been cracked we'll save the key to a key file
-            for that specific target. This function just asks if the network
-            has been cracked. Possibly not going to be used as network_key
-            returns False if not cracked.
-        """
-        return os.exists(self.target.key_file)
+            This does a generic dissasociation attack.
+            Meaning that this attack is both useful on WEP and WPA.
 
-    def network_key(self):
-        """
-            Return network key or False if network has not been cracked.
-        """
-        if not self.is_network_cracked():
-            return False
-        with open(self.target.key_file) as keyf:
-            return keyf.readlines()
+            This can be used both to get ARP replays and WPA handshake.
 
+            See : http://www.aircrack-ng.org/doku.php?id=deauthentication
+        """
+        self.end_scan()
+        # TODO: end_crack too?
+        self.scan(OrderedDict([
+            ('filter_bssid', self._target.bssid),
+        ]))
+
+        aireplay_options = OrderedDict([
+            ('replay_ap_bssid', self._target.bssid),
+            ('deauth', True)
+        ])
+        if len(self._target.clients) > 0:
+            aireplay_options.update([
+                ('replay_ap_destination', self._target.clients[0]['bssid'])
+            ])  # TODO: that bssid is probably not clean
+
+        # Launch aireplay in dissasoc mode
+        aireplay = self.aircrack.aireplay(aireplay_options, lambda x: True)
+        aireplay_pid = aireplay.result().result.pid
+
+        aircrack = self.crack()
+        aircrack_pid = aircrack.result().result.pid
+
+        self._target.pids = {
+            'aicrack': aircrack_pid,
+            'aireplay': aireplay_pid
+        }
+
+        return {
+            'status': 'on',
+            'pids': self._target.pids
+        }
 
 class AiroscriptSession(Airoscript):
     """
@@ -329,7 +356,8 @@ class AiroscriptSession(Airoscript):
         if not isinstance(target, Target):
             if isinstance(target, list):
                 target = dict(target)
-            self._target = Target(self).from_dict(target)
+            self._target = Target(self)
+            self._target.from_dict(target)
         else:
             self._target = target
 
@@ -382,7 +410,10 @@ def clean_to_xmlrpc(element, to_clean):
     """
         Cleans certain properties from dict representation of given object
     """
-    res = element.__dict__.copy()
+    if not isinstance(element, dict):
+        res = element.__dict__.copy()
+    else:
+        res = element.copy()
     for el in to_clean:
         res.pop(el)
     return res
@@ -398,6 +429,7 @@ class Target(object):
             :TODO:
                 - That might not be the best, have it in mind
         """
+        self.pids = {}
         self.parent = parent
         self.properties = [
             'bssid',
@@ -410,20 +442,84 @@ class Target(object):
         for element in self.properties:
             setattr(self.__class__, element, '')
 
+    def is_attack_running(self):
+        """
+            Returns True if the ALL the attack processes are still executing
+            This means that:
+
+                - If part of the attack (I.E replaying) has stopped, will
+                consider the attack finished.
+                - If the processes don't die after the attack is successful,
+                it wont consider the attack finished.
+
+            That's why we'll combine it with is_cracked and key
+        """
+        return all([psutil.pid_exists(pid) for pid in self.pids.values()])
+
+    def is_attack_finished(self):
+        """
+            Return if the attack is finished.
+            This is a more complete check that is_attack_running,
+            it has in account if the network has been cracked and
+            if the attack has actually started.
+        """
+        if self.is_network_cracked():
+            return True
+        return self.pids is not {} and not self.is_attack_running()
+
     @property
     def key_file(self):
         return os.path.join(self.parent.target_dir, "{}.{}".format(
             self.bssid.replace(':', '_'), "key"))
+
+    def is_network_cracked(self):
+        """
+            If the network has been cracked we'll save the key to a key file
+            for that specific target. This function just asks if the network
+            has been cracked. Possibly not going to be used as network_key
+            returns False if not cracked.
+        """
+        return os.exists(self.key_file)
+
+    def cleanup(self):
+        """
+            kill all related PIDS and clean them.
+        """
+        pids = self.pids.copy()
+        self.pids = {}
+        return [os.kill(pid) for pid in pids.values()]
+
+    @property
+    def key(self):
+        """
+            Return network key or False if network has not been cracked.
+        """
+        return self.get_key()
+
+    def get_key(self):
+        """
+            XMLRPC function for key()
+        """
+        if not self.is_network_cracked():
+            return False
+        with open(self.key_file) as keyf:
+            return keyf.readlines()
 
     def from_dict(self, dict_, clients=[]):
         """
             Do some magic, get only its clients from the client list,
             strip extra whitespace in properties, and get its hackability
         """
-        self.bssid = dict_['BSSID'].strip()
-        self.essid = dict_['ESSID'].strip()
-        self.power = dict_['Power'].strip()
-        self.encryption = dict_['Privacy'].strip(),
+        if "BSSID" in dict_:
+            self.bssid = dict_['BSSID'].strip()
+            self.essid = dict_['ESSID'].strip()
+            self.power = dict_['Power'].strip()
+            self.encryption = dict_['Privacy'].strip(),
+        else:
+            self.bssid = dict_['bssid']
+            self.essid = dict_['essid']
+            self.power = dict_['power']
+            self.encryption = dict_['encryption']
         self.hackability = self.get_hackability()
         self.clients = [client for client in clients if client['Station MAC'] == self.bssid]
         return clean_to_xmlrpc(self, ['properties', 'parent'])
@@ -458,14 +554,6 @@ class Target(object):
             'value': int(points/20),
             'techs': techs
         }
-
-    def __repr__(self):
-        """
-            Clean representation, remove parent wich gives a circular
-            result, not XMLRPC representable
-        """
-        return clean_to_xmlrpc(self, ['parent'])
-
 
 def airoscriptxmlrpc():
     """
