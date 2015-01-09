@@ -8,6 +8,15 @@
         "wireless": ["mon0"],
         "dump_prefix" : ["-w", "/tmp"]
     },
+    "aircrack-ng":{
+        "attack_mode": ["-a", false],
+        "filter_essid": ["-e", false],
+        "filter_bssid": ["-b", false],
+        "ncpu": ["-p", false],
+        "quiet": ["-q", true],
+        "merge_aps": ["-C", false],
+        "key_file": ["-l", "current_key"]
+    },
     "aireplay-ng":{
       "filter_ap_bssid": ["-b", false],
       "filter_destination_bssid": ["-d", false],
@@ -41,7 +50,23 @@
 
       "frag_destination_ip": ["-k", false],
       "frag_source_ip": ["-l", false],
-    }
+        
+      "iface": ["-i", false],
+      "pcap": ["-r", false],
+      "disable_rtc": ["-R", false],
+      "ignore_negative_one":["--ignore-negative-one", true]
+      
+      "deauth": ["-0", false],
+      "fakeauth": ["-1", false],
+      "interactive": ["-2", false],
+      "arpreplay": ["-3", false],
+      "chopchop": ["-4", false],
+      "fragment": ["-5", false],
+      "caffe-late": ["-6", false],
+      "cfrag": ["-7", false],
+      "migmode": ["-8", false],
+      "test": ["-9", false],
+    },
     "airmon-ng": {
         "command": ["start"],
         "wireless": ["wlan0"]
