@@ -8,6 +8,40 @@
         "wireless": ["mon0"],
         "dump_prefix" : ["-w", "/tmp"]
     },
+    "aireplay-ng":{
+      "filter_ap_bssid": ["-b", false],
+      "filter_destination_bssid": ["-d", false],
+      "filter_source_bssid": ["-s", false],
+
+      "minimum_packet_length": ["-m", 68],
+      "maximum_packet_length": ["-n", 86],
+
+      "frame_control_type": ["-u", false],
+      "frame_control_tods": ["-t", false],
+      "frame_control_fromds": ["-f", false],
+      "frame_control_wep": ["-w", false],
+      "frame_control_word": ["-p", false],
+
+      "disable_ap_detection": ["-D", false],
+      "packets_per_second": ["-x", 10000],
+      "replay_ap_bssid": ["-a", false],
+      "replay_ap_destination": ["-c", false],
+      "replace_source_mac": ["-h", false],
+      "ring_buffer_size": ["-g", 8],
+      "first_matching_packet": ["-F", true],
+
+      "fakeauth_target_ap": ["-e", false],
+      "fakeauth_packets_per_burst": ["-o", 1],
+      "fakeauth_seconds_keepalive": ["-q", false],
+      "fakeauth_reassociation_requests": ["-Q", false],
+      "fakeauth_prga": ["-y", false],
+      "fakeauth_retry": ["-T", false],
+
+      "arp_replay_fromds": ["-j", true],
+
+      "frag_destination_ip": ["-k", false],
+      "frag_source_ip": ["-l", false],
+    }
     "airmon-ng": {
         "command": ["start"],
         "wireless": ["wlan0"]
