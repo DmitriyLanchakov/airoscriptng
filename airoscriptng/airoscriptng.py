@@ -136,8 +136,12 @@ class Airoscript(object):
             As aircrack object is not aware of this,
             we must manually change the status
         """
-        self.aircrackng.executing.remove('airodump-ng')
-        return os.kill(self.pids['airodump-ng'], 9)
+        try:
+            self.aircrack.executing.pop('airodump-ng')
+            return os.kill(self.pids['airodump-ng'], 9)
+        except KeyError, err:
+            logging.debug("Received keyerror on {}".format(err))
+        return False
 
     def scan(self, options=OrderedDict()):
         """
@@ -149,7 +153,7 @@ class Airoscript(object):
         """
         pluginmanager.trigger_event(
             "on_before_scan",
-            target=self.target,
+            target=self._target,
             session=self,
         )
         final_options = OrderedDict([
@@ -180,10 +184,10 @@ class Airoscript(object):
         """
         # Launch aircrack to crack indefinitely
         aircrack = self.aircrack.aircrack(OrderedDict([
-            ('target_file', self.target.key_file),
-            ('target_bssid', self.target.bssid),
-            ('cap_file', os.path.join(self.target_dir, self.name + "-01.cap"))
-        ]))
+            ('key_file', self._target.key_file),
+            ('filter_bssid', self._target.bssid),
+            ('cap_file', os.path.join(self.target_dir, self.config["name"] + "-01.cap"))
+        ]), lambda x: True)
         return aircrack
 
     def generic_dissasociation(self):
@@ -197,30 +201,34 @@ class Airoscript(object):
         """
         self.end_scan()
         # TODO: end_crack too?
-        self.scan()  # TODO: add here filters for target's channel and bssid
-        final_options = OrderedDict([
-            ('target_bssid', self.target.bssid),
+        self.scan(OrderedDict([
+            ('filter_bssid', self._target.bssid),
+        ]))
+
+        aireplay_options = OrderedDict([
+            ('replay_ap_bssid', self._target.bssid),
+            ('deauth', True)
         ])
-        if len(self.target.clients) > 0:
-            final_options.update([
-                ('target_client_bssid', self.target.clients[0]['bssid'])
+        if len(self._target.clients) > 0:
+            aireplay_options.update([
+                ('replay_ap_destination', self._target.clients[0]['bssid'])
             ])  # TODO: that bssid is probably not clean
 
         # Launch aireplay in dissasoc mode
-        aireplay = self.aircrack.aireplay(final_options, lambda x: True)
+        aireplay = self.aircrack.aireplay(aireplay_options, lambda x: True)
         aireplay_pid = aireplay.result().result.pid
 
         aircrack = self.crack()
         aircrack_pid = aircrack.result().result.pid
 
-        self.target.pids = {
+        self._target.pids = {
             'aicrack': aircrack_pid,
             'aireplay': aireplay_pid
         }
 
         return {
             'status': 'on',
-            'pids': self.target.pids
+            'pids': self._target.pids
         }
 
 class AiroscriptSession(Airoscript):
@@ -348,7 +356,8 @@ class AiroscriptSession(Airoscript):
         if not isinstance(target, Target):
             if isinstance(target, list):
                 target = dict(target)
-            self._target = Target(self).from_dict(target)
+            self._target = Target(self)
+            self._target.from_dict(target)
         else:
             self._target = target
 
@@ -401,7 +410,10 @@ def clean_to_xmlrpc(element, to_clean):
     """
         Cleans certain properties from dict representation of given object
     """
-    res = element.__dict__.copy()
+    if not isinstance(element, dict):
+        res = element.__dict__.copy()
+    else:
+        res = element.copy()
     for el in to_clean:
         res.pop(el)
     return res
@@ -498,10 +510,16 @@ class Target(object):
             Do some magic, get only its clients from the client list,
             strip extra whitespace in properties, and get its hackability
         """
-        self.bssid = dict_['BSSID'].strip()
-        self.essid = dict_['ESSID'].strip()
-        self.power = dict_['Power'].strip()
-        self.encryption = dict_['Privacy'].strip(),
+        if "BSSID" in dict_:
+            self.bssid = dict_['BSSID'].strip()
+            self.essid = dict_['ESSID'].strip()
+            self.power = dict_['Power'].strip()
+            self.encryption = dict_['Privacy'].strip(),
+        else:
+            self.bssid = dict_['bssid']
+            self.essid = dict_['essid']
+            self.power = dict_['power']
+            self.encryption = dict_['encryption']
         self.hackability = self.get_hackability()
         self.clients = [client for client in clients if client['Station MAC'] == self.bssid]
         return clean_to_xmlrpc(self, ['properties', 'parent'])
@@ -536,14 +554,6 @@ class Target(object):
             'value': int(points/20),
             'techs': techs
         }
-
-    def __repr__(self):
-        """
-            Clean representation, remove parent wich gives a circular
-            result, not XMLRPC representable
-        """
-        return clean_to_xmlrpc(self, ['parent'])
-
 
 def airoscriptxmlrpc():
     """
