@@ -41,8 +41,8 @@ class Executor(object):
 def parse_parameters(attributes, _parameters={}, command="airodump-ng"):
     """
         Main aircrack-ng parameter parsing from the json file is done here.
-        :TODO:
-            * Automatically generate the json this feeds on
+
+        :TODO: * Automatically generate the json this feeds on
 
         Parameter format is as follows:
 
@@ -53,6 +53,7 @@ def parse_parameters(attributes, _parameters={}, command="airodump-ng"):
                     'name_in_airoscript' : ['--flag_in_aircrack', "default_value"]
                 }
             }
+
 
         If default_value is True, it'll be assumed that is a flag that dont
         require an argument, and we want it by default enabled.
