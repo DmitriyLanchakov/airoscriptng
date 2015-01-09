@@ -3,6 +3,14 @@
 History
 -------
 
+0.0.4 (2015-09-01)
+-------------------
+
+* Bugfix on target handling
+* Bugfix on basic cracking
+* First attack (deauth) implemented
+* Added lots of parameters to parameter json file
+
 0.0.3 (2015-09-01)
 -------------------
 
