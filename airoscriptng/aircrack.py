@@ -74,8 +74,6 @@ def parse_parameters(attributes, _parameters={}, command="airodump-ng"):
         elif _attributes[command][name][-1] is True:
             del(_attributes[command][name][-1])
 
-    print _attributes[command].values()
-
     return list(itertools.chain(*_attributes[command].values()))
 
 
