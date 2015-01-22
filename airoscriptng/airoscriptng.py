@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import time
+import sys
 import json
 import broken
 import pluginmanager
@@ -77,25 +78,6 @@ class AiroscriptSessionManager(object):
         """
         return self.session_list[session_name]
 
-    def _listMethods(self):
-        """
-            Hack to return public methods of this object via XMLRPC
-
-            :TODO:
-                - Make this work
-        """
-        return list_public_methods(self)
-
-    def _methodHelp(self, method):
-        """
-            Hack to return public methods' help of this object via XMLRPC
-
-            :TODO:
-                - Make this work
-        """
-
-        f = getattr(self, method)
-        return inspect.getdoc(f)
 
 
 class Airoscript(object):
@@ -190,6 +172,9 @@ class Airoscript(object):
         ]), lambda x: True)
         return aircrack
 
+    def pyrit(self):
+        return "NOT IMPLEMENTED"
+
     def generic_dissasociation(self):
         """
             This does a generic dissasociation attack.
@@ -231,6 +216,24 @@ class Airoscript(object):
             'pids': self._target.pids
         }
 
+    def get_wpa_handshake(self):
+        """
+            Get WPA handshake, this right now is an alias for generic_dissasociation.
+        """
+        return self.generic_dissasociation()
+
+    def do_automated_hacking(self):
+        """
+            Tries every possible tech reported to work by hackability status.
+
+            This means that every tech must be part of THIS class.
+            External modules (capabilities) loaded in extra_capabilities will need
+            to have a "crack" function that will be invoked when
+            session._capability_name_ is invoked
+        """
+        return [getattr(self, tech) for tech in self._target.hackability["techs"]]
+
+
 class AiroscriptSession(Airoscript):
     """
         Basic airoscriptng session object.
@@ -251,12 +254,19 @@ class AiroscriptSession(Airoscript):
         self._target = Target()
         self._mon_iface = None
         self.target_dir = tempfile.mkdtemp()
+        self.resources_dir = os.path.join(os.path.dirname(unicode(__file__, sys.getfilesystemencoding())), "resources")
         if 'parameter_file' not in self.config:
-            self.config['parameter_file'] = "resources/aircrack_base_parameters.json"
+            self.config['parameter_file'] = os.path.join(self.resources_dir,
+                                                         "parameters.json")
         self.parameters = json.load(open(self.config['parameter_file']))
         self.aircrack = AircrackSession(self.parameters)
         self.extra_capabilities = dict([(extra, getattr(getattr(capabilities, extra), 'main')(self)) for extra in capabilities.__all__])
         self.reaver_targets = []
+        for cap_name in capabilities.__all__:
+            # This is so we can have external capabilities to manage attacks in hackability stuff.
+            # Right now, to use reaver =P
+            setattr(self, cap_name, lambda x, _name=cap_name:
+                    self.extra_capabilities[_name].hack(x))
 
     def list_wifi(self):
         """
@@ -404,6 +414,26 @@ class AiroscriptSession(Airoscript):
         clients = [dict(zip(client_headers, client)) for client in clients]
         a = [Target(self).from_dict(dict(zip(ap_headers, ap)), clients) for ap in aps]
         return sorted(a, key=lambda x: x['hackability']['value'], reverse=True)
+
+    def listMethods(self):
+        """
+            Hack to return public methods of this object via XMLRPC
+
+            :TODO:
+                - Make this work
+        """
+        return list_public_methods(self)
+
+    def _methodHelp(self, method):
+        """
+            Hack to return public methods' help of this object via XMLRPC
+
+            :TODO:
+                - Make this work
+        """
+
+        f = getattr(self, method)
+        return inspect.getdoc(f)
 
 
 def clean_to_xmlrpc(element, to_clean):
@@ -555,6 +585,7 @@ class Target(object):
             'value': int(points/20),
             'techs': techs
         }
+
 
 def airoscriptxmlrpc():
     """
